@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-app-server
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld-app-server
+      env: default
+  template:
+    metadata:
+      labels:
+        app: helloworld-app-server
+        env: default
+    spec:
+      containers:
+      - name: app
+        image: glindsell/helloworld-app
+        ports:
+        - containerPort: 50051
