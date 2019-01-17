@@ -72,3 +72,7 @@ Run the client to send requests:
 View load balancing occuring accross all three helloworld-app-server pods.  
 
 Click on Grafana icon to view individual pod’s stats.  
+
+To bring everything down:  
+```minikube stop
+minikube delete```
