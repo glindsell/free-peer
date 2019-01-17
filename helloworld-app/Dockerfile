@@ -28,6 +28,6 @@ RUN go get google.golang.org/grpc
 # Install protoc-gen-go
 RUN go get github.com/golang/protobuf/protoc-gen-go
 # Install vim
-RUN apt-get install vim
+RUN apt-get -y install vim
 
 CMD go run /go/src/helloworld-app/greeter_server/main.go
