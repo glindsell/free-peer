@@ -1,5 +1,5 @@
 # Helloworld-app  
-This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
+## This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
 
 Follow the instructions to install minikube:  
 https://kubernetes.io/docs/tasks/tools/install-minikube/
@@ -13,7 +13,7 @@ Set docker env:
 Build docker image:  
 ```docker build -t helloworld-app .```
 
-Run image as client in minikube:  
+Run local image as client in minikube:  
 ```kubectl run helloworld-app-client --image=helloworld-app:latest --port=50051 --image-pull-policy=Never```
 
 Check that it's running:  
@@ -35,8 +35,8 @@ Install the lightweight control plane into its own namespace (linkerd):
 ```linkerd install | kubectl apply -f -```
 
 Validate that everything’s happening correctly:  
-```linkerd check```  
-This command will patiently wait until Linkerd has been installed and is running.
+(This command will patiently wait until Linkerd has been installed and is running.)  
+```linkerd check```
 
 In a new terminal view the Linkerd dashboard by running:  
 ```linkerd dashboard```
@@ -44,7 +44,7 @@ In a new terminal view the Linkerd dashboard by running:
 Back in terminal view deployments:  
 ```kubectl -n linkerd get deploy```
 
-Install the app as a new deployment:  
+Install the app as a new deployment (using docker hub image at glindsell/helloworld-app):  
 ```linkerd inject hello-world-grpc.yml | kubectl apply -f -```
 
 View new deployment in the Linkerd dashboard.  
@@ -56,7 +56,7 @@ Get IP Address of services:
 ```kubectl get services```
 
 Exec into client:  
-```kubectl exec -it helloworld-app-client-<sha-goes-here> -- /bin/bash```
+```kubectl exec -it helloworld-app-client-<id-goes-here> -- /bin/bash```
 
 cd into app dir:  
 ```cd src/helloworld-app/```
