@@ -1,6 +1,8 @@
-# Helloworld-app  
-## This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
+# Helloworld-app
+## Description  
+This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
 
+## Run the app
 Follow the instructions to install minikube:  
 https://kubernetes.io/docs/tasks/tools/install-minikube/
 
