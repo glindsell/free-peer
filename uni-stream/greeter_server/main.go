@@ -21,12 +21,12 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net"
+	"strconv"
 
+	pb "github.com/chainforce/free-peer/uni-stream/helloworld"
 	"google.golang.org/grpc"
-	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -37,11 +37,10 @@ const (
 // server is used to implement helloworld.GreeterServer.
 type server struct{}
 
-// ListFeatures lists all features contained within the given bounding Rectangle.
-func (s *sayHelloServer) SayHello(in *pb.HelloRequest, stream pb.Greeter_SayHelloServer) error {
+func (s *server) SayHello(in *pb.HelloRequest, stream pb.Greeter_SayHelloServer) error {
 	log.Printf("Received: %v", in.Name)
 	for i := 0; i < 3; i++ {
-		if err := stream.Send(&pb.HelloReply{Message: "Hello " + in.Name + " " + i}); err != nil {
+		if err := stream.Send(&pb.HelloReply{Message: "Hello " + in.Name + " " + strconv.Itoa(i)}); err != nil {
 			return err
 		}
 	}
