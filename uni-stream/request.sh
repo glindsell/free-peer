@@ -4,8 +4,8 @@
 
 i="0"
 
-while [ $i -lt 3 ]
+while [ true ]
 do
-go run greeter_client/main.go
+go run peer_client/main.go $i
 i=$[$i+1]
 done

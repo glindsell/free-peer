@@ -13,10 +13,10 @@ Set docker env:
 ```eval $(minikube docker-env)```
 
 Build docker image:  
-```docker build -t helloworld-app .```
+```docker build -t chaincode .```
 
 Run local image as client in minikube:  
-```kubectl run helloworld-app-client --image=helloworld-app:latest --port=50051 --image-pull-policy=Never```
+```kubectl run peer-client --image=chaincode:latest --port=50051 --image-pull-policy=Never```
 
 Check that it's running:  
 ```kubectl get pods```
@@ -47,24 +47,24 @@ Back in terminal view deployments:
 ```kubectl -n linkerd get deploy```
 
 Install the app as a new deployment (using docker hub image at glindsell/helloworld-app):  
-```linkerd inject hello-world-grpc.yml | kubectl apply -f -```
+```linkerd inject chaincode.yml | kubectl apply -f -```
 
 View new deployment in the Linkerd dashboard.  
 
 Expose the deployment as a service:  
-```kubectl expose deployment helloworld-app-server --type=NodePort```
+```kubectl expose deployment chaincode-server --type=NodePort```
 
 Get IP Address of services:  
 ```kubectl get services```
 
 Exec into client:  
-```kubectl exec -it helloworld-app-client-<id-goes-here> -- /bin/bash```
+```kubectl exec -it peer-client-<id-goes-here> -- /bin/bash```
 
 cd into app dir:  
-```cd src/helloworld-app/```
+```cd src/github.com/chainforce/free-peer/uni-stream```
 
 Change <IP-ADDR> to CLUSTER-IP of helloworld-app-server (line 32 of helloworld-app/greeter_client):  
-```vim greeter_client/main.go```  
+```vim peer_client/main.go```  
 change:  
 ```address = "<IP-ADDR>:50051"```
 

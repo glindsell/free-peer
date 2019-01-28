@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: uni-stream-server
+  name: chaincode-server
   namespace: default
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: uni-stream-server
+      app: chaincode-server
       env: default
   template:
     metadata:
       labels:
-        app: uni-stream-server
+        app: chaincode-server
         env: default
     spec:
       containers:
       - name: app
-        image: glindsell/uni-stream
+        image: glindsell/chaincode
         ports:
         - containerPort: 50051

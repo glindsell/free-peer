@@ -25,13 +25,13 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/chainforce/free-peer/uni-stream/helloworld"
+	pb "github.com/chainforce/free-peer/uni-stream/chaincode_proto"
 	"google.golang.org/grpc"
 )
 
 const (
-	address     = "127.0.0.1:50051"
-	defaultName = "world"
+	address        = "127.0.0.1:50051"
+	defaultRequest = "CC-Request"
 )
 
 func main() {
@@ -41,19 +41,19 @@ func main() {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
-	c := pb.NewGreeterClient(conn)
+	c := pb.NewChaincodeClient(conn)
 
 	// Contact the server and print out its response.
-	name := defaultName
+	request := defaultRequest
 	if len(os.Args) > 1 {
-		name = os.Args[1]
+		request = defaultRequest + " " + os.Args[1]
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	stream, err := c.SayHello(ctx, &pb.HelloRequest{Name: name})
+	stream, err := c.MakeRequest(ctx, &pb.ChaincodeRequest{Input: request})
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("could not send request: %v", err)
 	}
 	for {
 		reply, err := stream.Recv()
@@ -63,6 +63,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("could not greet: %v", err)
 		}
-		log.Printf("Greeting: %s", reply.Message)
+		log.Printf(reply.Message)
 	}
 }

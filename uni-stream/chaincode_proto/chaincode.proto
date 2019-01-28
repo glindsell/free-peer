@@ -15,23 +15,23 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "io.grpc.examples.helloworld";
-option java_outer_classname = "HelloWorldProto";
+option java_package = "io.grpc.examples.chaincode";
+option java_outer_classname = "ChaincodeProto";
 
-package helloworld;
+package chaincode;
 
 // The greeting service definition.
-service Greeter {
+service Chaincode {
   // Sends a greeting
-  rpc SayHello (HelloRequest) returns (stream HelloReply) {}
+  rpc MakeRequest (ChaincodeRequest) returns (stream ChaincodeResponse) {}
 }
 
 // The request message containing the user's name.
-message HelloRequest {
-  string name = 1;
+message ChaincodeRequest {
+  string input = 1;
 }
 
 // The response message containing the greetings
-message HelloReply {
+message ChaincodeResponse {
   string message = 1;
 }

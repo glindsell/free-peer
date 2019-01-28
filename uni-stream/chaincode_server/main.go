@@ -25,7 +25,7 @@ import (
 	"net"
 	"strconv"
 
-	pb "github.com/chainforce/free-peer/uni-stream/helloworld"
+	pb "github.com/chainforce/free-peer/uni-stream/chaincode_proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -37,10 +37,10 @@ const (
 // server is used to implement helloworld.GreeterServer.
 type server struct{}
 
-func (s *server) SayHello(in *pb.HelloRequest, stream pb.Greeter_SayHelloServer) error {
-	log.Printf("Received: %v", in.Name)
+func (s *server) MakeRequest(in *pb.ChaincodeRequest, stream pb.Chaincode_MakeRequestServer) error {
+	log.Printf("Received: %v", in.Input)
 	for i := 0; i < 3; i++ {
-		if err := stream.Send(&pb.HelloReply{Message: "Hello " + in.Name + " " + strconv.Itoa(i)}); err != nil {
+		if err := stream.Send(&pb.ChaincodeResponse{Message: "CC-Response " + strconv.Itoa(i) + " (triggered by " + in.Input + ")"}); err != nil {
 			return err
 		}
 	}
@@ -53,7 +53,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	pb.RegisterGreeterServer(s, &server{})
+	pb.RegisterChaincodeServer(s, &server{})
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
