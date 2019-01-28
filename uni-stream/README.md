@@ -1,6 +1,6 @@
-# Helloworld-app
+# Uni-stream
 ## Description  
-This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
+This app demonstrates a GRPC server (representing a chaincode instance) and client (representing a peer) communicating in a single node k8s cluster, with load balancing applied between three chaincode server pods using Linkerd.
 
 ## Run the app
 Follow the instructions to install minikube:  
