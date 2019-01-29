@@ -21,7 +21,7 @@ rm -r protobuf
 
 EXPOSE 50051
 
-COPY ./ /go/src/github.com/chainforce/free-peer/uni-stream
+COPY ./ /go/src/github.com/chainforce/free-peer/bidi-pool
 
 # Get the source from GitHub
 RUN go get google.golang.org/grpc
@@ -30,4 +30,4 @@ RUN go get github.com/golang/protobuf/protoc-gen-go
 # Install vim
 RUN apt-get -y install vim
 
-CMD go run /go/src/github.com/chainforce/free-peer/uni-stream/chaincode_server/main.go
+CMD go run /go/src/github.com/chainforce/free-peer/bidi-pool/chaincode_server/main.go

@@ -25,15 +25,51 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
+	"sync"
+	"time"
 )
 
 const (
 	address        = "127.0.0.1:50051"
-	defaultRequest = "Peer name: "
 )
 
+var wg sync.WaitGroup
+var openConn int
+
 func main() {
+	runtime.GOMAXPROCS(5)
+
+	/*go func() {
+		for {
+			log.Println("Open connections: " + strconv.Itoa(openConn))
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()*/
+
+	numReqs, err:= strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("Failed parsing command line args: %v", err)
+	}
+	log.Println("Starting go routines...")
+	connNum := 0
+	for {
+		for openConn < 3 {
+			wg.Add(1)
+			openConn++
+			go run(connNum, numReqs)
+			//time.Sleep(1 * time.Second)
+			connNum++
+		}
+		log.Println("Waiting for a connection to timeout...")
+		wg.Wait()
+	}
+}
+
+func run(connNum, numReqs int) {
+	log.Println("Connection " + strconv.Itoa(connNum) + " starting.")
+	defer wg.Done()
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
@@ -41,12 +77,6 @@ func main() {
 	}
 	defer conn.Close()
 	client := pb.NewChaincodeClient(conn)
-
-	// Contact the server and print out its response.
-	request := defaultRequest
-	if len(os.Args) > 1 {
-		request = defaultRequest + os.Args[1]
-	}
 
 	ctx := context.Background()
 	//defer cancel()
@@ -71,16 +101,15 @@ func main() {
 		}
 	}()
 
-	numReqs, err:= strconv.Atoi(os.Args[2])
-	if err != nil {
-		log.Fatalf("Failed parsing command line args: %v", err)
-	}
 
 	for i := 0; i < numReqs ; i++ {
-		if err := stream.Send(&pb.ChaincodeRequest{Input: request + " | Request: " + strconv.Itoa(i)}); err != nil {
+		if err := stream.Send(&pb.ChaincodeRequest{Input: "Peer connection: " + strconv.Itoa(connNum) + " | Request: " + strconv.Itoa(i)}); err != nil {
 			log.Fatalf("Failed to send request: %v", err)
 		}
 	}
+	time.Sleep(5 * time.Second)
 	stream.CloseSend()
+	openConn--
+	log.Println("Connection " + strconv.Itoa(connNum) + " timed out.")
 	<-waitc
 }

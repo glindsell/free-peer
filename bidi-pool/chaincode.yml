@@ -17,6 +17,6 @@ spec:
     spec:
       containers:
       - name: app
-        image: glindsell/chaincode
+        image: glindsell/bidi-pool
         ports:
         - containerPort: 50051
