@@ -20,6 +20,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	pb "github.com/chainforce/free-peer/bidi-pool/chaincode_proto"
 	"google.golang.org/grpc"
 	"io"
@@ -27,7 +28,6 @@ import (
 	"os"
 	"runtime"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -35,18 +35,19 @@ const (
 	address        = "127.0.0.1:50051"
 )
 
-var wg sync.WaitGroup
+//var wg sync.WaitGroup
 var openConn int
+var firstThree int
 
 func main() {
 	runtime.GOMAXPROCS(5)
 
-	/*go func() {
+	go func() {
 		for {
 			log.Println("Open connections: " + strconv.Itoa(openConn))
 			time.Sleep(100 * time.Millisecond)
 		}
-	}()*/
+	}()
 
 	numReqs, err:= strconv.Atoi(os.Args[1])
 	if err != nil {
@@ -54,28 +55,40 @@ func main() {
 	}
 	log.Println("Starting go routines...")
 	connNum := 0
+	// TODO fix this for loop & rebuild image
 	for {
 		for openConn < 3 {
-			wg.Add(1)
+			//wg.Add(1)
 			openConn++
 			go run(connNum, numReqs)
 			//time.Sleep(1 * time.Second)
 			connNum++
+			if firstThree < 3 {
+				time.Sleep(time.Second)
+				firstThree++
+			}
 		}
-		log.Println("Waiting for a connection to timeout...")
-		wg.Wait()
+		fmt.Printf("")
+		//time.Sleep(time.Nanosecond)
+		//log.Println("Waiting for a connection to timeout...")
+		//wg.Wait()
 	}
 }
 
 func run(connNum, numReqs int) {
-	log.Println("Connection " + strconv.Itoa(connNum) + " starting.")
-	defer wg.Done()
+	log.Println("Connection " + strconv.Itoa(connNum) + " starting")
+	//defer wg.Done()
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Fatalf("error closing connection: %v", err)
+		}
+		openConn--
+	}()
 	client := pb.NewChaincodeClient(conn)
 
 	ctx := context.Background()
@@ -108,8 +121,9 @@ func run(connNum, numReqs int) {
 		}
 	}
 	time.Sleep(5 * time.Second)
-	stream.CloseSend()
-	openConn--
-	log.Println("Connection " + strconv.Itoa(connNum) + " timed out.")
+	if err := stream.CloseSend(); err != nil {
+		log.Fatalf("error sending close on stream: %v", err)
+	}
+	log.Println("Connection " + strconv.Itoa(connNum) + " closed")
 	<-waitc
 }
