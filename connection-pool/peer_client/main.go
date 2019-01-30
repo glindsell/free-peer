@@ -96,12 +96,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
 func sendTx(conn *lib.ConnectionWrapper) error {
-	conn.InFlight = true
 	clientConn := conn.ClientConn.(*grpc.ClientConn)
 	client := pb.NewChaincodeClient(clientConn)
 
@@ -139,7 +138,6 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 	}
 	log.Println("Stream closed")
 	<-waitChan
-	conn.InFlight = false
 
 	return nil
 }

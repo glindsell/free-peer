@@ -2,6 +2,7 @@ package lib
 
 import (
 	"log"
+	"math/rand"
 	"strconv"
 	"time"
 )
@@ -10,15 +11,18 @@ type InitClientConnFunction func() (interface{}, error)
 type CloseClientConnFunction func(interface{}) error
 
 type ConnectionPoolWrapper struct {
-	size int
-	connChan chan *ConnectionWrapper
+	Size int
+	OpenConn int
+	ConnChan chan *ConnectionWrapper
 }
 
 type ConnectionWrapper struct {
-	Id string
+	Id int
 	ClientConn interface{}
 	InFlight bool
-	timeToLive int
+	TimeToLive int
+	InitFn InitClientConnFunction
+	CloseFn CloseClientConnFunction
 	//handler chaincode.Handler
 }
 
@@ -30,34 +34,54 @@ type ConnectionWrapper struct {
 */
 func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
 	// Create a buffered channel allowing size senders
-	p.connChan = make(chan *ConnectionWrapper, size)
+	p.ConnChan = make(chan *ConnectionWrapper, size)
 	for x := 0; x < size; x++ {
-		log.Println("Connection " + strconv.Itoa(x) + " starting")
+		id := rand.New(rand.NewSource(time.Now().UnixNano()))
+		log.Println("Connection " + strconv.Itoa(id.Int()) + " starting")
 		conn := &ConnectionWrapper{}
-		go conn.ManageConnection(x, ttL, initFn, closeFn)
+		go conn.ManageConnection(id.Int(), ttL, initFn, closeFn, p)
 
 		// Add the connection to the channel
-		p.connChan <- conn
+		p.ConnChan <- conn
+		p.OpenConn++
 	}
-	p.size = size
+	p.Size = size
+	conn := &ConnectionWrapper{
+		TimeToLive: ttL,
+		InitFn: initFn,
+		CloseFn: closeFn,
+	}
+	time.Sleep(time.Second)
+	go p.ManageConnections(conn)
 	return nil
 }
 
 func (p *ConnectionPoolWrapper) GetConnection() *ConnectionWrapper {
-	return <-p.connChan
+	conn := <-p.ConnChan
+	conn.InFlight = true
+	return conn
 }
 
 func (p *ConnectionPoolWrapper) ReleaseConnection(conn *ConnectionWrapper) {
-	p.connChan <- conn
+	conn.InFlight = false
+	p.ConnChan <- conn
 }
 
-func (p *ConnectionPoolWrapper) ManageConnections() {
-	//TODO: This is where code which keeps correct number of connections alive will go
+func (p *ConnectionPoolWrapper) ManageConnections(conn *ConnectionWrapper) {
+	for {
+		if p.OpenConn < p.Size {
+			id := rand.New(rand.NewSource(time.Now().UnixNano()))
+			conn.ManageConnection(id.Int(), conn.TimeToLive, conn.InitFn, conn.CloseFn, p)
+			p.ConnChan <- conn
+			p.OpenConn++
+		}
+		time.Sleep(time.Nanosecond)
+	}
 }
 
-func (c *ConnectionWrapper) ManageConnection(id int, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) {
+func (c *ConnectionWrapper) ManageConnection(id int, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction, pool *ConnectionPoolWrapper) {
 	// Start connection
-	err := c.InitConnection(id, ttL, initFn)
+	err := c.InitConnection(id, ttL, initFn, closeFn)
 	if err != nil {
 		log.Fatalf("error starting connection: %v", err)
 	}
@@ -65,22 +89,29 @@ func (c *ConnectionWrapper) ManageConnection(id int, ttL int, initFn InitClientC
 	// Wait for Time to Live
 	time.Sleep(time.Duration(ttL) * time.Second)
 
-	// Close connection
-	err = c.CloseConnection(closeFn)
-	if err != nil {
-		log.Fatalf("error closing connection: %v", err)
+	if c.InFlight != true {
+		// Close connection
+		err = c.CloseConnection(closeFn)
+		if err != nil {
+			log.Fatalf("error closing connection: %v", err)
+		}
+		pool.OpenConn--
+	} else {
+		log.Printf("Connection not cancelled, connection in flight")
 	}
 	return
 }
 
-func (c *ConnectionWrapper) InitConnection(id int, ttL int, initFn InitClientConnFunction) error {
+func (c *ConnectionWrapper) InitConnection(id int, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
 	clientConn, err := initFn()
 	if err != nil {
 		return err
 	}
 	c.ClientConn = clientConn
-	c.Id = strconv.Itoa(id)
-	c.timeToLive = ttL
+	c.Id = id
+	c.TimeToLive = ttL
+	c.InitFn = initFn
+	c.CloseFn = closeFn
 	return nil
 }
 
