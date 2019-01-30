@@ -23,7 +23,7 @@ package main
 import (
 	"context"
 	pb "github.com/chainforce/free-peer/bidi-pool/chaincode_proto"
-	"github.com/chainforce/free-peer/connection-pool/chaincode_proto/lib"
+	"github.com/chainforce/free-peer/connection-pool/lib"
 	"google.golang.org/grpc"
 	"io"
 	"log"
