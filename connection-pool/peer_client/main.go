@@ -71,6 +71,22 @@ func UseConnection(fn connFunction) error {
 
 	// Grab connection from the pool and type assert it to gRPC
 	conn = connPool.GetConnection()
+	log.Printf("Got connection: %v", conn.Id)
+
+	if conn.Closed != false {
+		log.Printf("Connection %v is closed! Retrying...", conn.Id)
+		err := UseConnection(fn)
+		if err != nil {
+			log.Fatalf("error getting connection: %v", err)
+		}
+	}
+	if conn == nil {
+		log.Printf("No open connections available! Retrying...")
+		err := UseConnection(fn)
+		if err != nil {
+			log.Fatalf("error getting connection: %v", err)
+		}
+	}
 
 	// When this function exits, release the connection back to the pool
 	defer connPool.ReleaseConnection(conn)
@@ -96,7 +112,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(time.Nanosecond)
 	}
 }
 
@@ -104,11 +120,12 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 	clientConn := conn.ClientConn.(*grpc.ClientConn)
 	client := pb.NewChaincodeClient(clientConn)
 
-	ctx := context.Background()
-	//defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	//ctx := context.Background()
 	stream, err := client.ChaincodeChat(ctx)
 	if err != nil {
-		log.Fatalf("%v.ChaincodeChat(_) = _, %v", client, err)
+		log.Fatalf("chaincode chat failed on connection %v: %v", conn.Id, err)
 	}
 
 	waitChan := make(chan struct{})
@@ -123,7 +140,7 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 			if err != nil {
 				log.Fatalf("Failed to receive message: %v", err)
 			}
-			log.Printf(" | %v", in.Message)
+			log.Printf(" | %v recieved on connection: %v", in.Message, conn.Id)
 		}
 	}()
 
