@@ -72,9 +72,12 @@ func UseConnection(fn connFunction) error {
 	// Grab connection from the pool and type assert it to gRPC
 	conn = connPool.GetConnection()
 	log.Printf("Got connection: %v", conn.Id)
+	// When this function exits, release the connection back to the pool
+	defer connPool.ReleaseConnection(conn)
 
 	if conn.Closed != false {
 		log.Printf("Connection %v is closed! Retrying...", conn.Id)
+		//connPool.ReleaseConnection(conn)
 		err := UseConnection(fn)
 		if err != nil {
 			log.Fatalf("error getting connection: %v", err)
@@ -82,14 +85,13 @@ func UseConnection(fn connFunction) error {
 	}
 	if conn == nil {
 		log.Printf("No open connections available! Retrying...")
+		//connPool.ReleaseConnection(conn)
 		err := UseConnection(fn)
 		if err != nil {
 			log.Fatalf("error getting connection: %v", err)
 		}
 	}
 
-	// When this function exits, release the connection back to the pool
-	defer connPool.ReleaseConnection(conn)
 
 	// Do work
 	err := fn(conn)
@@ -101,7 +103,7 @@ func UseConnection(fn connFunction) error {
 
 func main() {
 	// Create a pool of connections using the initPool function
-	err := connPool.InitPool(3, 3, initConnection, closeConnection)
+	err := connPool.InitPool(3, 1, initConnection, closeConnection)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -112,7 +114,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
-		time.Sleep(time.Nanosecond)
 	}
 }
 
