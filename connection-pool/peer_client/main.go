@@ -22,11 +22,17 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"runtime/trace"
+
 	pb "github.com/chainforce/free-peer/bidi-pool/chaincode_proto"
 	"github.com/chainforce/free-peer/connection-pool/lib"
+	//"github.com/derekparker/delve/service/api"
 	"google.golang.org/grpc"
 	"io"
 	"log"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -39,10 +45,6 @@ var connPool = &lib.ConnectionPoolWrapper{}
 
 type connFunction func(conn *lib.ConnectionWrapper) error
 
-/**
- This function creates a connection to the database. It shouldn't have to know anything
- about the pool, It will be called N times where N is the size of the requested pool.
-*/
 func initConnection() (interface{}, error) {
 	// Create connection
 	grpcConn, err := grpc.Dial(address, grpc.WithInsecure())
@@ -62,7 +64,8 @@ func closeConnection(grpcConn interface{}) error {
 	return nil
 }
 
-func UseConnection(fn connFunction) error {
+func UseConnection(fn connFunction, goroutine, loopIndex int) error {
+	log.Printf("gr[%d]: i=%d\n", goroutine, loopIndex)
 	var conn = &lib.ConnectionWrapper{}
 
 	// Grab connection from the pool
@@ -73,7 +76,7 @@ func UseConnection(fn connFunction) error {
 
 	if conn == nil {
 		log.Printf("No open connections available! Retrying...")
-		err := UseConnection(fn)
+		err := UseConnection(fn, goroutine, loopIndex)
 		if err != nil {
 			log.Fatalf("error getting connection: %v", err)
 		}
@@ -89,15 +92,36 @@ func UseConnection(fn connFunction) error {
 }
 
 func main() {
+	f, err := os.Create("trace.out")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	defer f.Close()
+
+	err = trace.Start(f)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	defer trace.Stop()
+	runtime.GOMAXPROCS(10)
 	// Create a pool of connections using the initPool function
-	err := connPool.InitPool(3, 1, initConnection, closeConnection)
+	err = connPool.InitPool(3, 1, initConnection, closeConnection)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 	// Wait for connections to be set-up
 	time.Sleep(1 * time.Second)
-	for {
-		err = UseConnection(sendTx)
+	for i := 0; i < 3; i++ {
+		go simulateTransactions(i)
+	}
+	// prevent main from exiting immediately
+	var input string
+	fmt.Scanln(&input)
+}
+
+func simulateTransactions(n int) {
+	for i := 0; i < 1000; i++ {
+		err := UseConnection(sendTx, n, i)
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
