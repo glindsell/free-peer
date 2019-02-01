@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/trace"
 
 	pb "github.com/chainforce/free-peer/connection-pool/chaincode_proto"
@@ -31,7 +32,6 @@ import (
 	"google.golang.org/grpc"
 	"io"
 	"log"
-	"runtime"
 	"strconv"
 	"time"
 )
@@ -91,6 +91,7 @@ func UseConnection(fn connFunction, goroutine, loopIndex int) error {
 }
 
 func main() {
+	runtime.GOMAXPROCS(10)
 	f, err := os.Create("trace.out")
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -102,15 +103,14 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 	defer trace.Stop()
-	runtime.GOMAXPROCS(10)
 	// Create a pool of connections using the initPool function
-	err = connPool.InitPool(3, 1, initConnection, closeConnection)
+	err = connPool.InitPool(100, 100, initConnection, closeConnection)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 	// Wait for connections to be set-up
 	time.Sleep(1 * time.Second)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		go simulateTransactions(i)
 	}
 	// prevent main from exiting immediately
@@ -158,6 +158,7 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 		if err := stream.Send(&pb.ChaincodeRequest{Input: "Request: " + strconv.Itoa(i)}); err != nil {
 			log.Fatalf("Failed to send request: %v", err)
 		}
+		//time.Sleep(3 * time.Second)
 	}
 
 	if err := stream.CloseSend(); err != nil {
