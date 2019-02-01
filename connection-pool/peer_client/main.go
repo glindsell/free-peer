@@ -44,19 +44,15 @@ type connFunction func(conn *lib.ConnectionWrapper) error
  about the pool, It will be called N times where N is the size of the requested pool.
 */
 func initConnection() (interface{}, error) {
-	//var conn = &lib.ConnectionWrapper{}
 	// Create connection
 	grpcConn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	//conn.ClientConn = grpcConn
-	// return connection
 	return grpcConn, nil
 }
 
 func closeConnection(grpcConn interface{}) error {
-	//var conn = &lib.ConnectionWrapper{}
 	// Create connection
 	conn := grpcConn.(*grpc.ClientConn)
 	err := conn.Close()
@@ -69,23 +65,14 @@ func closeConnection(grpcConn interface{}) error {
 func UseConnection(fn connFunction) error {
 	var conn = &lib.ConnectionWrapper{}
 
-	// Grab connection from the pool and type assert it to gRPC
+	// Grab connection from the pool
 	conn = connPool.GetConnection()
 	log.Printf("Got connection: %v", conn.Id)
 	// When this function exits, release the connection back to the pool
 	defer connPool.ReleaseConnection(conn)
 
-	if conn.Closed != false {
-		log.Printf("Connection %v is closed! Retrying...", conn.Id)
-		//connPool.ReleaseConnection(conn)
-		err := UseConnection(fn)
-		if err != nil {
-			log.Fatalf("error getting connection: %v", err)
-		}
-	}
 	if conn == nil {
 		log.Printf("No open connections available! Retrying...")
-		//connPool.ReleaseConnection(conn)
 		err := UseConnection(fn)
 		if err != nil {
 			log.Fatalf("error getting connection: %v", err)
@@ -123,7 +110,6 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	//ctx := context.Background()
 	stream, err := client.ChaincodeChat(ctx)
 	if err != nil {
 		log.Fatalf("chaincode chat failed on connection %v: %v", conn.Id, err)
