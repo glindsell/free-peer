@@ -26,9 +26,8 @@ import (
 	"os"
 	"runtime/trace"
 
-	pb "github.com/chainforce/free-peer/bidi-pool/chaincode_proto"
+	pb "github.com/chainforce/free-peer/connection-pool/chaincode_proto"
 	"github.com/chainforce/free-peer/connection-pool/lib"
-	//"github.com/derekparker/delve/service/api"
 	"google.golang.org/grpc"
 	"io"
 	"log"

@@ -84,7 +84,6 @@ func (c *ConnectionWrapper) InitConnection() error {
 		return err
 	}
 	c.ClientConn = clientConn
-	//c.Closed = false
 	log.Printf("Started connection: %v", strconv.Itoa(c.Id))
 	return nil
 }
