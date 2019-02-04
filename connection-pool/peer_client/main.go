@@ -21,18 +21,18 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"runtime/trace"
+	"strconv"
+	"context"
 
 	pb "github.com/chainforce/free-peer/connection-pool/chaincode_proto"
 	"github.com/chainforce/free-peer/connection-pool/lib"
 	"google.golang.org/grpc"
-	"io"
 	"log"
-	"strconv"
 	"time"
 )
 
@@ -169,3 +169,4 @@ func sendTx(conn *lib.ConnectionWrapper) error {
 
 	return nil
 }
+
