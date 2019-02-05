@@ -1,15 +1,16 @@
 package lib
 
 import (
-	"io"
+	"context"
+	"errors"
+	"fmt"
+	pb "github.com/chainforce/free-peer/connection-pool-locking/chaincode_proto"
+	"google.golang.org/grpc"
 	"log"
 	"sort"
 	"strconv"
 	"sync"
 	"time"
-	pb "github.com/chainforce/free-peer/connection-pool-locking/chaincode_proto"
-	"google.golang.org/grpc"
-	"context"
 )
 
 type InitClientConnFunction func() (interface{}, error)
@@ -24,7 +25,7 @@ type ConnectionPoolWrapper struct {
 	LiveConnMap map[int]*ConnectionWrapper
 	DeadConnMap map[int]*ConnectionWrapper
 	ConnNum     int
-	Mutex sync.Mutex
+	Mutex       sync.Mutex
 }
 
 type ConnectionWrapper struct {
@@ -35,7 +36,17 @@ type ConnectionWrapper struct {
 	TimeToLive int
 	Requests   int
 	Dead       bool
-	Mutex sync.Mutex
+	Handlers   []*ConnectionHandler
+	Mutex      sync.Mutex
+}
+
+type ConnectionHandler struct {
+	ConnectionWrapper *ConnectionWrapper
+	chatClient        *pb.Chaincode_ChaincodeChatClient // allows gRPC stream
+	chatServer        *pb.Chaincode_ChaincodeChatServer // allows gRPC stream
+	cancelContext     context.CancelFunc
+	OngoingTxs        map[int32]chan *pb.ChaincodeRequest
+	Mutex             sync.Mutex
 }
 
 func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
@@ -67,6 +78,7 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	if err != nil {
 		log.Fatalf("error starting connection: %v", err)
 	}
+	p.PrintConnectionMaps()
 
 	// Wait for Time to Live
 	time.Sleep(time.Duration(c.TimeToLive) * time.Second)
@@ -86,12 +98,30 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	}
 
 	newC := &ConnectionWrapper{
-		InitFn: c.InitFn,
-		CloseFn: c.CloseFn,
+		InitFn:     c.InitFn,
+		CloseFn:    c.CloseFn,
 		TimeToLive: c.TimeToLive,
 	}
-	
+
 	p.runConnection(newC)
+}
+
+func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
+	log.Printf("Live connections:")
+	var live []int
+	for k := range p.LiveConnMap {
+		live = append(live, k)
+	}
+	sort.Ints(live)
+	log.Printf("%v", live)
+
+	var dead []int
+	log.Printf("Dead connections:")
+	for k := range p.DeadConnMap {
+		dead = append(dead, k)
+	}
+	sort.Ints(dead)
+	log.Printf("%v", dead)
 }
 
 func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
@@ -127,68 +157,98 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 		c.Dead = true
 		p.DeadConnMap[c.Id] = c
 		log.Printf("Killed connection: %v", strconv.Itoa(c.Id))
+
+		for _, h := range c.Handlers {
+			h.cancelContext()
+		}
 		return true, nil
 	}
 	return false, nil
 }
 
-func (p *ConnectionPoolWrapper) Send(ccReq *pb.ChaincodeRequest) error {
+func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
+	var ch ConnectionHandler
 	c := p.GetConnection(p.ConnNum)
-	
+	ch.ConnectionWrapper = c
+
 	clientConn := c.ClientConn.(*grpc.ClientConn)
 	client := pb.NewChaincodeClient(clientConn)
-
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ch.cancelContext = cancel
+
+	//ctx := context.Background()
 	stream, err := client.ChaincodeChat(ctx)
 	if err != nil {
-		log.Fatalf("chaincode chat failed on connection %v: %v", c.Id, err)
+		return nil, errors.New(fmt.Sprintf("chaincode chat failed on connection %v: %v", c.Id, err))
 	}
 
-	waitChan := make(chan struct{})
-	go func() {
-		for {
-			in, err := stream.Recv()
-			if err == io.EOF {
-				// read done.
-				close(waitChan)
-				return
-			}
-			if err != nil {
-				log.Fatalf("Failed to receive message: %v", err)
-			}
-			log.Printf(" | %v recieved on connection: %v", in.Message, c.Id)
-			c.Requests--
-			log.Printf("c.Request reduced to: %v", c.Requests)
-		}
-	}()
+	ch.chatClient = &stream
 
-	if err := stream.Send(ccReq); err != nil {
-		log.Fatalf("Failed to send request: %v", err)
-	}
-	c.Requests++
-	log.Printf("c.Request increased to: %v", c.Requests)
+	c.Handlers = append(c.Handlers, &ch)
 
-	if err := stream.CloseSend(); err != nil {
-		log.Fatalf("error sending close on stream: %v", err)
-	}
-	<-waitChan
-	log.Printf("Live connections:")
-	var live []int
-	for k := range p.LiveConnMap {
-		live = append(live, k)
-	}
-	sort.Ints(live)
-	log.Printf("%v", live)
+	return &ch, nil
+}
 
-	var dead []int
-	log.Printf("Dead connections:")
-	for k := range p.DeadConnMap {
-		dead = append(dead, k)
+func (ch *ConnectionHandler) SendReq(request *pb.ChaincodeRequest) error {
+	ch.Mutex.Lock()
+	defer ch.Mutex.Unlock()
+	log.Printf(" | %v sending on connection: %v", request, ch.ConnectionWrapper.Id)
+	ch.ConnectionWrapper.Requests++
+	log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
+	chatClient := *ch.chatClient
+	if err := chatClient.Send(request); err != nil {
+		return errors.New(fmt.Sprintf("failed to send request: %v", err))
 	}
-	sort.Ints(dead)
-	log.Printf("%v", dead)
+	return nil
+}
 
+func (ch *ConnectionHandler) RecvResp() (*pb.ChaincodeResponse, error) {
+	ch.Mutex.Lock()
+	defer ch.Mutex.Unlock()
+	chatClient := *ch.chatClient
+	in, err := chatClient.Recv()
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
+	}
+	ch.ConnectionWrapper.Requests--
+	log.Printf(" | %v recieved on connection: %v", in.Message, ch.ConnectionWrapper.Id)
+	log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
+	return in, nil
+}
+
+func (ch *ConnectionHandler) SendResp(response *pb.ChaincodeResponse) error {
+	ch.Mutex.Lock()
+	defer ch.Mutex.Unlock()
+	log.Printf(" | %v sending on connection: %v", response, ch.ConnectionWrapper.Id)
+	ch.ConnectionWrapper.Requests++
+	log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
+	chatServer := *ch.chatServer
+	if err := chatServer.Send(response); err != nil {
+		return errors.New(fmt.Sprintf("failed to send request: %v", err))
+	}
+	return nil
+}
+
+func (ch *ConnectionHandler) RecvReq() (*pb.ChaincodeRequest, error) {
+	ch.Mutex.Lock()
+	defer ch.Mutex.Unlock()
+	chatServer := *ch.chatServer
+	in, err := chatServer.Recv()
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
+	}
+	ch.ConnectionWrapper.Requests--
+	log.Printf(" | %v recieved on connection: %v", in.Input, ch.ConnectionWrapper.Id)
+	log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
+	return in, nil
+}
+
+func (ch *ConnectionHandler) CloseSend() error {
+	chatClient := *ch.chatClient
+	err := chatClient.CloseSend()
+	if err != nil {
+		return errors.New(fmt.Sprintf("failed to send close on stream: %v", err))
+	}
 	return nil
 }
 

@@ -29,9 +29,12 @@ service Chaincode {
 // The request message containing the user's name.
 message ChaincodeRequest {
   string input = 1;
+  bool isTX = 2;
+  int32 txID = 3;
 }
 
 // The response message containing the greetings
 message ChaincodeResponse {
   string message = 1;
+  int32 txID = 2;
 }

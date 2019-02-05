@@ -29,7 +29,7 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/chainforce/free-peer/connection-pool/chaincode_proto"
+	pb "github.com/chainforce/free-peer/connection-pool-locking/chaincode_proto"
 	"google.golang.org/grpc"
 )
 
@@ -44,21 +44,42 @@ type server struct{
 }
 
 func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
+	//h := lib.ConnectionHandler{}
+	//h.OngoingTxs = map[int32]chan*pb.ChaincodeRequest{}
 	for {
-		in, err := stream.Recv()
+		req, err := stream.Recv()
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Received request: %v\n", in)
+		fmt.Printf("Received request: %v\n", req)
+		if req.IsTX {
+			/*if _, ok := h.OngoingTxs[req.TxID]; ok {
+				log.Fatalf("error duplication tx")
+			}*/
 
-		for i := 0; i < 1; i++ {
-			if err := stream.Send(&pb.ChaincodeResponse{Message: "CC Name: " + s.chaincodeName + " <-> " + in.Input + " | CC Response: " + strconv.Itoa(i)}); err != nil {
-				return err
+			//h.OngoingTxs[req.TxID] = make(chan *pb.ChaincodeRequest)
+
+			//go func(req *pb.ChaincodeRequest) {
+				for i := 0; i < 3; i++ {
+					respMessage := fmt.Sprintf("Response from chaincode for tx: %v", req.TxID)
+					resp := &pb.ChaincodeResponse{Message: respMessage, TxID: req.TxID}
+					err := stream.Send(resp)
+					if err != nil {
+						log.Fatalf(fmt.Sprintf("error: %v", err))
+					}
+				}
+			//}(req)
+
+			respDone := &pb.ChaincodeResponse{Message: "done", TxID: req.TxID}
+			err = stream.Send(respDone)
+			if err != nil {
+				log.Fatalf(fmt.Sprintf("error: %v", err))
 			}
 		}
+		log.Printf("Received ongoing tx: %v", req)
 	}
 }
 
