@@ -55,7 +55,7 @@ func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFun
 	for i := 0; i < size; i++ {
 		c := p.newConnection(ttL, initFn, closeFn)
 		go p.runConnection(c)
-		time.Sleep(time.Second)
+		time.Sleep(1000 * time.Millisecond)
 	}
 	p.Size = size
 	return nil

@@ -27,7 +27,7 @@ func main() {
 	defer trace.Stop()
 
 	// Create a pool of connections using the initPool function
-	p, err := lib.InitGrpcPool(3, 1000)
+	p, err := lib.InitGrpcPool(3, 3000)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -43,7 +43,7 @@ func main() {
 	var i int32
 	for i = 0; i < 100; i++ {
 		SendTx(p, &pb.ChaincodeRequest{Input: "Request message", IsTX: true, TxID: i})
-		r := rand.Intn(100)
+		r := rand.Intn(1000)
 		time.Sleep(time.Duration(r) * time.Millisecond)
 	}
 	// prevent main from exiting immediately

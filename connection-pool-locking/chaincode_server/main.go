@@ -70,6 +70,7 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 					if err != nil {
 						log.Fatalf(fmt.Sprintf("error: %v", err))
 					}
+					//time.Sleep(1000 * time.Millisecond)
 				}
 			//}(req)
 
