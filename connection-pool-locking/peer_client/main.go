@@ -27,7 +27,7 @@ func main() {
 	defer trace.Stop()
 
 	// Create a pool of connections using the initPool function
-	p, err := lib.InitGrpcPool(3, 3)
+	p, err := lib.InitGrpcPool(3, 1000)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -41,9 +41,9 @@ func main() {
 	// creates new go routine
 	// registers go routine with map of txid to go channel
 	var i int32
-	for i = 0; i < 50; i++ {
+	for i = 0; i < 100; i++ {
 		SendTx(p, &pb.ChaincodeRequest{Input: "Request message", IsTX: true, TxID: i})
-		r := rand.Intn(1000)
+		r := rand.Intn(100)
 		time.Sleep(time.Duration(r) * time.Millisecond)
 	}
 	// prevent main from exiting immediately
@@ -64,16 +64,6 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 	/*if _, ok := h.OngoingTxs[txReq.TxID]; ok {
 		log.Fatalf("error: Duplicate tx")
 	}*/
-
-	err = h.SendReq(txReq)
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-
-	//ch := make(chan *pb.ChaincodeResponse)
-
-	//h.OngoingTxs[txReq.TxID] = make(chan *pb.ChaincodeRequest)
-
 	waitc := make(chan struct{})
 	go func(tx *pb.ChaincodeRequest) {
 		for {
@@ -102,5 +92,15 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 			}
 		}
 	}(txReq)
+
+	err = h.SendReq(txReq)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	//ch := make(chan *pb.ChaincodeResponse)
+
+	//h.OngoingTxs[txReq.TxID] = make(chan *pb.ChaincodeRequest)
+
 	<- waitc
 }

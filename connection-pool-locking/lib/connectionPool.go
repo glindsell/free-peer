@@ -81,7 +81,7 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	p.PrintConnectionMaps()
 
 	// Wait for Time to Live
-	time.Sleep(time.Duration(c.TimeToLive) * time.Second)
+	time.Sleep(time.Duration(c.TimeToLive) * time.Millisecond)
 
 	// Reset connection
 	killed, err := p.killConnection(c)
@@ -167,6 +167,8 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 }
 
 func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
 	var ch ConnectionHandler
 	c := p.GetConnection(p.ConnNum)
 	ch.ConnectionWrapper = c
@@ -244,6 +246,8 @@ func (ch *ConnectionHandler) RecvReq() (*pb.ChaincodeRequest, error) {
 }
 
 func (ch *ConnectionHandler) CloseSend() error {
+	ch.Mutex.Lock()
+	defer ch.Mutex.Unlock()
 	chatClient := *ch.chatClient
 	err := chatClient.CloseSend()
 	if err != nil {
