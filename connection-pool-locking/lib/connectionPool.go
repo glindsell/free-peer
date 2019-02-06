@@ -108,6 +108,8 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 }
 
 func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
+	p.Mutex.Lock()
+	defer p.Mutex.Unlock()
 	log.Printf("Live connections:")
 	var live []int
 	for k := range p.LiveConnMap {
@@ -123,6 +125,7 @@ func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
 	}
 	sort.Ints(dead)
 	log.Printf("%v", dead)
+	return
 }
 
 func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
