@@ -17,6 +17,6 @@ spec:
     spec:
       containers:
       - name: app
-        image: glindsell/connection-pool
+        image: glindsell/connection-pool-locking
         ports:
         - containerPort: 50051

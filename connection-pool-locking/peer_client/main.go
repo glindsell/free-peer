@@ -41,10 +41,12 @@ func main() {
 	// creates new go routine
 	// registers go routine with map of txid to go channel
 	var i int32
-	for i = 0; i < 100; i++ {
-		SendTx(p, &pb.ChaincodeRequest{Input: "Request message", IsTX: true, TxID: i})
+	for {
+		input := fmt.Sprintf("PEER REQUEST - TX: %v START - message", i)
+		SendTx(p, &pb.ChaincodeRequest{Input: input, IsTX: true, TxID: i})
 		r := rand.Intn(1000)
 		time.Sleep(time.Duration(r) * time.Millisecond)
+		i++
 	}
 	// prevent main from exiting immediately
 	//var input string
@@ -60,30 +62,32 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
+	log.Printf("Got connection: %v", h.ConnectionWrapper.Id)
 
-	/*if _, ok := h.OngoingTxs[txReq.TxID]; ok {
-		log.Fatalf("error: Duplicate tx")
-	}*/
 	waitc := make(chan struct{})
+	err = h.SendReq(txReq)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 	go func(tx *pb.ChaincodeRequest) {
 		for {
 			resp, err := h.RecvResp()
 			if err != nil {
 				log.Fatalf("%v", err)
 			}
-
 			if resp.TxID != tx.TxID {
 				log.Fatalf("error: bad req, txid mismatch")
 			}
-			if resp.Message == "done" {
+			if resp.Message == "CHAINCODE DONE" {
+				p.ReleaseConnection(h.ConnectionWrapper.Id)
 				err = h.CloseSend()
-				close(waitc)
 				if err != nil {
 					log.Fatalf("%v", err)
 				}
+				close(waitc)
 				return
 			}
-			reqMessage := fmt.Sprintf("peer req, in response to chaincode response: %v", resp.Message)
+			reqMessage := fmt.Sprintf("PEER RESPONSE OK to CHAINCODE REQUEST: %v", resp.Message)
 			req := &pb.ChaincodeRequest{Input: reqMessage, IsTX: false, TxID: resp.TxID}
 
 			err = h.SendReq(req)
@@ -92,15 +96,5 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 			}
 		}
 	}(txReq)
-
-	err = h.SendReq(txReq)
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
-
-	//ch := make(chan *pb.ChaincodeResponse)
-
-	//h.OngoingTxs[txReq.TxID] = make(chan *pb.ChaincodeRequest)
-
 	<- waitc
 }

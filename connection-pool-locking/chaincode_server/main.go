@@ -44,8 +44,6 @@ type server struct{
 }
 
 func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
-	//h := lib.ConnectionHandler{}
-	//h.OngoingTxs = map[int32]chan*pb.ChaincodeRequest{}
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
@@ -54,33 +52,27 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Received request: %v\n", req)
+		fmt.Printf("Received TX request: %v\n", req)
 		if req.IsTX {
-			/*if _, ok := h.OngoingTxs[req.TxID]; ok {
-				log.Fatalf("error duplication tx")
-			}*/
-
-			//h.OngoingTxs[req.TxID] = make(chan *pb.ChaincodeRequest)
-
-			//go func(req *pb.ChaincodeRequest) {
+			go func(request *pb.ChaincodeRequest) {
 				for i := 0; i < 3; i++ {
-					respMessage := fmt.Sprintf("Response from chaincode for tx: %v", req.TxID)
+					respMessage := fmt.Sprintf("CHAINCODE REQUEST - PUT STATE %v - for tx: %v", i, req.TxID)
 					resp := &pb.ChaincodeResponse{Message: respMessage, TxID: req.TxID}
 					err := stream.Send(resp)
 					if err != nil {
 						log.Fatalf(fmt.Sprintf("error: %v", err))
 					}
-					//time.Sleep(1000 * time.Millisecond)
 				}
-			//}(req)
 
-			respDone := &pb.ChaincodeResponse{Message: "done", TxID: req.TxID}
-			err = stream.Send(respDone)
-			if err != nil {
-				log.Fatalf(fmt.Sprintf("error: %v", err))
-			}
+				respDone := &pb.ChaincodeResponse{Message: "CHAINCODE DONE", TxID: req.TxID}
+				err = stream.Send(respDone)
+				if err != nil {
+					log.Fatalf(fmt.Sprintf("error: %v", err))
+				}
+			}(req)
+		} else {
+			log.Printf("Received ongoing tx: %v", req)
 		}
-		log.Printf("Received ongoing tx: %v", req)
 	}
 }
 
