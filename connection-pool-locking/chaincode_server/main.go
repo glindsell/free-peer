@@ -52,7 +52,7 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Received TX request: %v\n", req)
+		log.Printf(" | RECV <<< Req: %v\n", req)
 		if req.IsTX {
 			go func(request *pb.ChaincodeRequest) {
 				for i := 0; i < 3; i++ {
@@ -62,6 +62,7 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 					if err != nil {
 						log.Fatalf(fmt.Sprintf("error: %v", err))
 					}
+					log.Printf(" | SEND >>> Req: %v\n", resp)
 				}
 
 				respDone := &pb.ChaincodeResponse{Message: "CHAINCODE DONE", TxID: req.TxID}
@@ -71,7 +72,7 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 				}
 			}(req)
 		} else {
-			log.Printf("Received ongoing tx: %v", req)
+			log.Printf("Req is ongoing tx: %v", req.Input)
 		}
 	}
 }

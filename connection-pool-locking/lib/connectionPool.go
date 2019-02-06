@@ -192,10 +192,7 @@ func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, erro
 	var ch ConnectionHandler
 
 	ks := p.GetAllConnections()
-	log.Printf("ks: %v", ks)
 	sort.Ints(ks)
-	log.Printf("ks s: %v", ks)
-	log.Printf("p.Select: %v", p.Select)
 
 	k := ks[p.Select]
 	p.Select++

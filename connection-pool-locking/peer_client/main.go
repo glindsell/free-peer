@@ -87,7 +87,7 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 				close(waitc)
 				return
 			}
-			reqMessage := fmt.Sprintf("PEER RESPONSE OK to CHAINCODE REQUEST: %v", resp.Message)
+			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", resp.Message)
 			req := &pb.ChaincodeRequest{Input: reqMessage, IsTX: false, TxID: resp.TxID}
 
 			err = h.SendReq(req)
