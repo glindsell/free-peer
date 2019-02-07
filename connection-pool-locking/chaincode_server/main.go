@@ -21,25 +21,24 @@
 package main
 
 import (
-	"fmt"
-	"io"
-	"log"
-	"math/rand"
-	"net"
-	"strconv"
-	"time"
+"fmt"
+"io"
+"log"
+"math/rand"
+"net"
+"strconv"
+"time"
 
-	pb "github.com/chainforce/free-peer/connection-pool-locking/chaincode_proto"
-	"google.golang.org/grpc"
+pb "github.com/chainforce/free-peer/multi-request/chaincode_proto"
+"google.golang.org/grpc"
 )
 
 const (
 	port = ":50051"
 )
 
-
 // server is used to implement helloworld.GreeterServer.
-type server struct{
+type server struct {
 	chaincodeName string
 }
 
