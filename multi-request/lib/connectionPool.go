@@ -7,6 +7,8 @@ import (
 	pb "github.com/chainforce/free-peer/multi-request/chaincode_proto"
 	"google.golang.org/grpc"
 	"log"
+	"math/rand"
+	"net"
 	"sort"
 	"strconv"
 	"sync"
@@ -18,18 +20,20 @@ type CloseClientConnFunction func(interface{}) error
 
 const (
 	address = "127.0.0.1:50051"
+	port = ":50052"
 )
 
 type ConnectionPoolWrapper struct {
+	sync.Mutex
 	Size        int
 	LiveConnMap map[int]*ConnectionWrapper
 	DeadConnMap map[int]*ConnectionWrapper
 	ConnNum     int
 	Select      int
-	Mutex       sync.Mutex
 }
 
 type ConnectionWrapper struct {
+	sync.Mutex
 	Id         int
 	ClientConn interface{}
 	InitFn     InitClientConnFunction
@@ -38,16 +42,14 @@ type ConnectionWrapper struct {
 	Requests   int
 	Dead       bool
 	Handlers   []*ConnectionHandler
-	Mutex      sync.Mutex
 }
 
 type ConnectionHandler struct {
+	sync.Mutex
 	ConnectionWrapper *ConnectionWrapper
-	chatClient        *pb.Chaincode_ChaincodeChatClient // allows gRPC stream
-	chatServer        *pb.Chaincode_ChaincodeChatServer // allows gRPC stream
+	clientStream      pb.ChatService_ChatClient // allows gRPC stream
+	serverStream      pb.ChatService_ChatServer // allows gRPC stream
 	cancelContext     context.CancelFunc
-	OngoingTxs        map[int32]chan *pb.ChaincodeRequest
-	Mutex             sync.Mutex
 }
 
 func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
@@ -59,7 +61,7 @@ func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFun
 		if err != nil {
 			return err
 		}
-		go p.runConnection(c)
+		//go p.runConnection(c)
 		time.Sleep(1000 * time.Millisecond)
 	}
 	p.Size = size
@@ -92,24 +94,15 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	time.Sleep(time.Duration(c.TimeToLive) * time.Millisecond)
 
 	// Reset connection
-	killed, err := p.killConnection(c)
+	err := p.resetConnection(c)
 	if err != nil {
 		log.Fatalf("error killing connection: %v", err)
 	}
-	for killed != true {
-		log.Printf("error killing connection, connection in use, retrying later")
-		time.Sleep(1 * time.Second)
-		killed, err = p.killConnection(c)
-		if err != nil {
-			log.Fatalf("error killing connection: %v", err)
-		}
-	}
-
 }
 
 func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
+	p.Lock()
+	defer p.Unlock()
 	log.Printf("Live connections:")
 	var live []int
 	for k := range p.LiveConnMap {
@@ -129,10 +122,8 @@ func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
 }
 
 func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
-	/*p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()*/
+	p.Lock()
+	defer p.Unlock()
 	p.ConnNum++
 	c.Id = p.ConnNum
 	log.Printf("Starting connection: %v", strconv.Itoa(c.Id))
@@ -146,12 +137,39 @@ func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
 	return nil
 }
 
-func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, error) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
+func (p *ConnectionPoolWrapper) resetConnection(c *ConnectionWrapper) error {
+	p.Lock()
+	defer p.Unlock()
+	c.Lock()
+	defer c.Unlock()
+	// Kill connection
 	log.Printf("Killing connection: %v", strconv.Itoa(c.Id))
+	killed, err := p.killConnection(c)
+	if err != nil {
+		return errors.New(fmt.Sprintf("error killing connection: %v", err))
+	}
+	for killed != true {
+		log.Printf("failed to kill connection, connection in use, retrying later")
+		time.Sleep(1 * time.Second)
+		killed, err = p.killConnection(c)
+		if err != nil {
+			return errors.New(fmt.Sprintf("error killing connection: %v", err))
+		}
+	}
+
+	// Create new connection
+	newC := p.newConnection(c.TimeToLive, c.InitFn, c.CloseFn)
+	err = p.initConnection(newC)
+	if err != nil {
+		return errors.New(fmt.Sprintf("error starting connection: %v", err))
+	}
+	// Run new connection
+	go p.runConnection(newC)
+
+	return nil
+}
+
+func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, error) {
 	if c.Requests == 0 {
 		delete(p.LiveConnMap, c.Id)
 		err := c.CloseFn(c.ClientConn)
@@ -162,26 +180,19 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 		p.DeadConnMap[c.Id] = c
 		log.Printf("Killed connection: %v", strconv.Itoa(c.Id))
 
-		for _, h := range c.Handlers {
+		/*for _, h := range c.Handlers {
+			err = h.CloseSend()
+			if err != nil {
+				return false, err
+			}
 			h.cancelContext()
-		}
-		newC := &ConnectionWrapper{
-			InitFn:     c.InitFn,
-			CloseFn:    c.CloseFn,
-			TimeToLive: c.TimeToLive,
-		}
-		err = p.initConnection(newC)
-		if err != nil {
-			log.Fatalf("error starting connection: %v", err)
-		}
-
-		go p.runConnection(newC)
-		return true, nil
+		}*/
 	}
 	return false, nil
+
 }
 
-func (p *ConnectionPoolWrapper) GetAllConnections() []int {
+func (p *ConnectionPoolWrapper) getAllConnections() []int {
 	var ks []int
 	for k := range p.LiveConnMap {
 		ks = append(ks, k)
@@ -190,11 +201,13 @@ func (p *ConnectionPoolWrapper) GetAllConnections() []int {
 }
 
 func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
+	p.Lock()
+	defer p.Unlock()
+
+	var err error
 	var ch ConnectionHandler
 
-	ks := p.GetAllConnections()
+	ks := p.getAllConnections()
 	sort.Ints(ks)
 
 	k := ks[p.Select]
@@ -209,96 +222,148 @@ func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, erro
 	ch.ConnectionWrapper = c
 
 	clientConn := c.ClientConn.(*grpc.ClientConn)
-	client := pb.NewChaincodeClient(clientConn)
+	client := pb.NewChatServiceClient(clientConn)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	ch.cancelContext = cancel
 
-	//ctx := context.Background()
-	stream, err := client.ChaincodeChat(ctx)
+	ch.clientStream, err = client.Chat(ctx)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("chaincode chat failed on connection %v: %v", c.Id, err))
 	}
-
-	ch.chatClient = &stream
 
 	c.Handlers = append(c.Handlers, &ch)
 
 	return &ch, nil
 }
 
-func (ch *ConnectionHandler) SendReq(request *pb.ChaincodeRequest) error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	log.Printf(" | SEND >>> %v on connection: %v", request.Input, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
-	chatClient := *ch.chatClient
-	if err := chatClient.Send(request); err != nil {
+func Serve() {
+	lis, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	serv := newChatServer()
+	pb.RegisterChatServiceServer(s, serv)
+	log.Println("Peer: " + serv.chatServerName + " started.")
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+func newChatServer() *chatServer {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	s := &chatServer{chatServerName: strconv.Itoa(r.Int())}
+	return s
+}
+
+/*func NewCCHandler (servStream pb.ChatService_ChatServer) *CCHandler {
+	h := &CCHandler{}
+	h.serverStream = servStream
+	return h
+}*/
+
+type chatServer struct {
+	chatServerName string
+}
+
+func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
+	//h := NewCCHandler(servStream)
+	//h.Start()
+	waitc := make(chan struct{})
+	go func() {
+		for {
+			req, err := servStream.Recv() // THIS IS NIL! ... NEED TO INITIALISE SOME SORT OF SERVER
+			log.Printf("Req received on chat server: %v", req)
+			if err != nil {
+				log.Fatalf("%v", err)
+			}
+			/*if req.TxID != tx.TxID {
+				log.Fatalf("error: bad req, txid mismatch")
+			}*/
+			if req.Input == "CHAINCODE DONE" {
+				/*p.ReleaseConnection(h.ConnectionWrapper.Id)
+				err = h.Done(tx.TxID)
+				if err != nil {
+					log.Fatalf("%v", err)
+				}
+				close(waitc)
+				return*/
+				log.Printf("Received CHAINCODE DONE on: %v", req)
+			}
+			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)
+			resp := &pb.ChatResponse{Message: reqMessage, TxID: req.TxID}
+
+			err = servStream.Send(resp)
+			if err != nil {
+				log.Fatalf("%v", err)
+			}
+		}
+	}()
+	<-waitc
+	return nil
+}
+
+func (h *ConnectionHandler) SendReq(request *pb.ChatRequest) error {
+	h.Lock()
+	defer h.Unlock()
+	h.ConnectionWrapper.Requests++
+	if err := h.clientStream.Send(request); err != nil {
+		return errors.New(fmt.Sprintf("failed to send request: %v", err))
+	}
+	log.Printf(" | SEND >>> %v on connection: %v", request.Input, h.ConnectionWrapper.Id)
+	return nil
+}
+
+func (h *ConnectionHandler) RecvResp() (*pb.ChatResponse, error) {
+	h.Lock()
+	defer h.Unlock()
+	h.ConnectionWrapper.Requests--
+	in, err := h.clientStream.Recv()
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
+	}
+	log.Printf(" | REVC <<< %v on connection: %v", in.Message, h.ConnectionWrapper.Id)
+	return in, nil
+}
+
+func (h *ConnectionHandler) SendResp(response *pb.ChatResponse) error {
+	h.Lock()
+	defer h.Unlock()
+	h.ConnectionWrapper.Requests++
+	log.Printf(" | SEND >>> %v on connection: %v", response.Message, h.ConnectionWrapper.Id)
+	if err := h.serverStream.Send(response); err != nil {
 		return errors.New(fmt.Sprintf("failed to send request: %v", err))
 	}
 	return nil
 }
 
-func (ch *ConnectionHandler) RecvResp() (*pb.ChaincodeResponse, error) {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatClient := *ch.chatClient
-	in, err := chatClient.Recv()
+func (h *ConnectionHandler) RecvReq() (*pb.ChatRequest, error) {
+	h.Lock()
+	defer h.Unlock()
+	h.ConnectionWrapper.Requests--
+	in, err := h.serverStream.Recv()
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
 	}
-	//ch.ConnectionWrapper.Requests--
-	log.Printf(" | REVC <<< %v on connection: %v", in.Message, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
+	log.Printf(" | RECV <<< %v on connection: %v", in.Input, h.ConnectionWrapper.Id)
 	return in, nil
 }
 
-func (ch *ConnectionHandler) SendResp(response *pb.ChaincodeResponse) error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	log.Printf(" | SEND >>> %v on connection: %v", response.Message, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
-	chatServer := *ch.chatServer
-	if err := chatServer.Send(response); err != nil {
-		return errors.New(fmt.Sprintf("failed to send request: %v", err))
-	}
-	return nil
-}
-
-func (ch *ConnectionHandler) RecvReq() (*pb.ChaincodeRequest, error) {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatServer := *ch.chatServer
-	in, err := chatServer.Recv()
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
-	}
-	//ch.ConnectionWrapper.Requests--
-	log.Printf(" | RECV <<< %v on connection: %v", in.Input, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
-	return in, nil
-}
-
-func (ch *ConnectionHandler) CloseSend() error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatClient := *ch.chatClient
-	err := chatClient.CloseSend()
+func (h *ConnectionHandler) closeSend() error {
+	h.Lock()
+	defer h.Unlock()
+	err := h.clientStream.CloseSend()
 	if err != nil {
 		return errors.New(fmt.Sprintf("failed to send close on stream: %v", err))
 	}
-	//ch.ConnectionWrapper.Requests--
+	return nil
+}
+
+func (h *ConnectionHandler) Done(txID int32) error {
+	err := h.closeSend()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -316,7 +381,7 @@ func closeGrpcConnection(grpcConn interface{}) error {
 	conn := grpcConn.(*grpc.ClientConn)
 	err := conn.Close()
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Fatalf("did not close: %v", err)
 	}
 	return nil
 }

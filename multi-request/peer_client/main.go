@@ -32,28 +32,24 @@ func main() {
 		log.Fatalf("%v", err)
 	}
 
-	// create go routine on each connection
-	// call chaincode chat on each go routine
-	// receive stream in for loop, same as chaincode server
-	// has same map of txid to go channel req
+	go lib.Serve()
 
-	// send tx from peer
-	// creates new go routine
-	// registers go routine with map of txid to go channel
 	var i int32
 	for {
+		log.Println("Go")
 		input := fmt.Sprintf("PEER REQUEST - TX: %v START - message", i)
-		SendTx(p, &pb.ChaincodeRequest{Input: input, IsTX: true, TxID: i})
+		SendTx(p, &pb.ChatRequest{Input: input, IsTX: true, TxID: i})
 		r := rand.Intn(1000)
 		time.Sleep(time.Duration(r) * time.Millisecond)
 		i++
 	}
+
 	// prevent main from exiting immediately
 	//var input string
 	//fmt.Scanln(&input)
 }
 
-func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
+func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChatRequest) {
 	if !txReq.IsTX {
 		log.Fatalf("error: SendTx on a peer connection handler should be a TX")
 	}
@@ -64,37 +60,40 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeRequest) {
 	}
 	log.Printf("Got connection: %v", h.ConnectionWrapper.Id)
 
-	waitc := make(chan struct{})
 	err = h.SendReq(txReq)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	go func(tx *pb.ChaincodeRequest) {
+
+	// Do something with chat server!
+	// REMOVE THIS FROM HERE INTO LIBRARY
+	/*waitc := make(chan struct{})
+	go func(tx *pb.ChatRequest) {
 		for {
-			resp, err := h.RecvResp()
+			req, err := h.RecvReq() // THIS IS NIL! ... NEED TO INITIALISE SOME SORT OF SERVER
 			if err != nil {
 				log.Fatalf("%v", err)
 			}
-			if resp.TxID != tx.TxID {
+			if req.TxID != tx.TxID {
 				log.Fatalf("error: bad req, txid mismatch")
 			}
-			if resp.Message == "CHAINCODE DONE" {
+			if req.Input == "CHAINCODE DONE" {
 				p.ReleaseConnection(h.ConnectionWrapper.Id)
-				err = h.CloseSend()
+				err = h.Done(tx.TxID)
 				if err != nil {
 					log.Fatalf("%v", err)
 				}
 				close(waitc)
 				return
 			}
-			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", resp.Message)
-			req := &pb.ChaincodeRequest{Input: reqMessage, IsTX: false, TxID: resp.TxID}
+			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)
+			resp := &pb.ChatResponse{Message: reqMessage, TxID: req.TxID}
 
-			err = h.SendReq(req)
+			err = h.SendResp(resp)
 			if err != nil {
 				log.Fatalf("%v", err)
 			}
 		}
 	}(txReq)
-	<-waitc
+	<-waitc*/
 }

@@ -29,7 +29,7 @@ import (
 "strconv"
 "time"
 
-pb "github.com/chainforce/free-peer/multi-request/chaincode_proto"
+pb "github.com/chainforce/free-peer/connection-pool-locking/chaincode_proto"
 "google.golang.org/grpc"
 )
 
