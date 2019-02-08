@@ -15,26 +15,26 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "io.grpc.examples.chaincode";
-option java_outer_classname = "ChaincodeProto";
+option java_package = "io.grpc.examples.chat";
+option java_outer_classname = "ChatProto";
 
-package chaincode;
+package chat;
 
 // The greeting service definition.
-service Chaincode {
+service ChatService {
   // Sends a greeting
-  rpc ChaincodeChat (stream ChaincodeRequest) returns (stream ChaincodeResponse) {}
+  rpc Chat (stream ChatRequest) returns (stream ChatResponse) {}
 }
 
 // The request message containing the user's name.
-message ChaincodeRequest {
+message ChatRequest {
   string input = 1;
   bool isTX = 2;
   int32 txID = 3;
 }
 
 // The response message containing the greetings
-message ChaincodeResponse {
+message ChatResponse {
   string message = 1;
   int32 txID = 2;
 }

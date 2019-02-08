@@ -21,8 +21,8 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -38,69 +38,106 @@ const (
 	port = ":50051"
 )
 
-
 // server is used to implement helloworld.GreeterServer.
-type chaincode struct{
-	chaincodeName string
+type chatServer struct {
+	chatServerName string
 }
 
 type CCHandler struct {
 	sync.Mutex
-	ongoingTxs map[int32]chan*pb.ChaincodeRequest
-	stream pb.Chaincode_ChaincodeChatClient
+	serverStream pb.ChatService_ChatServer
+	clientStream pb.ChatService_ChatClient
+	//chatServiceServer pb.ChatServiceServer
+	chatServiceClient pb.ChatServiceClient
 }
 
-func (c *chaincode) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
-	h := NewCCHandler(stream)
+func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
+	h := NewCCHandler(servStream)
 	h.Start()
+	return nil
+}
+
+func NewCCHandler (servStream pb.ChatService_ChatServer) *CCHandler {
+	h := &CCHandler{}
+	h.serverStream = servStream
+	return h
+}
+
+func (h *CCHandler) SendReq(msg *pb.ChatRequest) error {
+	h.Lock()
+	defer h.Unlock()
+	err := h.clientStream.Send(msg)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *CCHandler) RecvResp() (*pb.ChatResponse, error) {
+	h.Lock()
+	defer h.Unlock()
+	resp, err := h.clientStream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (h *CCHandler) RecvReq() (*pb.ChatRequest, error) {
+	h.Lock()
+	defer h.Unlock()
+	in, err := h.serverStream.Recv()
+	if err != nil {
+		return nil, err
+	}
+	return in, nil
+}
+
+func (h *CCHandler) SendResp(msg *pb.ChatResponse) error {
+	h.Lock()
+	defer h.Unlock()
+	err := h.serverStream.Send(msg)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *CCHandler) Start() {
-	h.ongoingTxs = map[int32]chan*pb.ChaincodeRequest{}
-
 	for {
-		reqFromPeer, err := h.stream.Recv()
+		msgFromPeer, err := h.RecvReq()
 		if err != nil {
 			log.Fatalf("error receiving from stream: %v", err)
 		}
-		if reqFromPeer.IsTX {
-			if _, ok := h.ongoingTxs[reqFromPeer.TxID]; ok {
-				log.Fatalf("error duplication tx: %v", reqFromPeer)
+
+		go func(req *pb.ChatRequest) {
+			ctx := context.Background()
+			//h.chatServiceClient = pb.NewChatServiceClient() << MAYBE ADD AND INITIALISE THIS?
+			h.clientStream, err = h.chatServiceClient.Chat(ctx) // THIS IS NIL!
+			if err != nil {
+				log.Fatalf("error creating client stream: %v", err)
 			}
 
-			ch := make(chan*pb.ChaincodeResponse)
-			h.ongoingTxs[reqFromPeer.TxID] = make(chan*pb.ChaincodeRequest)
-
-			go func(tx *pb.ChaincodeRequest, ch chan*pb.ChaincodeResponse) {
-				for i := 0; i < 3; i++ {
-					reqFromCC := &pb.ChaincodeRequest{Input: fmt.Sprintf("CC PutState: %v", i), IsTX: false, TxID: reqFromPeer.TxID}
-					err := h.stream.Send(reqFromCC)
-					if err != nil {
-						log.Fatalf("error sending on stream: %v", err)
-					}
-
-					resp := <-ch
-					if resp.TxID != tx.TxID {
-						log.Fatalf("error request txID mismatch")
-					}
-				}
-				doneFromCC := &pb.ChaincodeRequest{Input: "Done", IsTX: false, TxID: reqFromPeer.TxID}
-				err := h.stream.Send(doneFromCC)
+			for i := 0; i < 3; i++ {
+				reqFromCC := &pb.ChatRequest{Input: fmt.Sprintf("CC PutState: %v", i), IsTX: false, TxID: msgFromPeer.TxID}
+				err := h.SendReq(reqFromCC)
 				if err != nil {
 					log.Fatalf("error sending on stream: %v", err)
 				}
-				h.TXDone(reqFromPeer.TxID)
-			}(reqFromPeer, ch)
-		} else {
-			ch := h.ongoingTxs[reqFromPeer.TxID]
-			ch <- reqFromPeer
-		}
+				peerResp, err := h.RecvResp()
+
+				if peerResp.TxID != req.TxID {
+					log.Fatalf("error request txID mismatch")
+				}
+			}
+
+			doneFromCC := &pb.ChatRequest{Input: "CHAINCODE DONE", TxID: msgFromPeer.TxID}
+			err := h.SendReq(doneFromCC)
+			if err != nil {
+				log.Fatalf("error sending on stream: %v", err)
+			}
+		}(msgFromPeer)
 	}
-	conn, err := grpc.Dial()
-	client := pb.NewChaincodeClient()
-	stream, err := client.ChaincodeChat()
-	stream.Send()
-	stream.Recv()
 }
 
 func main() {
@@ -109,18 +146,16 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	serv := newChaincode()
-	pb.RegisterChaincodeServer(s, serv)
-	log.Println("CC: " + serv.chaincodeName + " started.")
+	serv := newChatServer()
+	pb.RegisterChatServiceServer(s, serv)
+	log.Println("CC: " + serv.chatServerName + " started.")
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func newChaincode() *chaincode {
+func newChatServer() *chatServer {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s := &chaincode{chaincodeName: strconv.Itoa(r.Int())}
+	s := &chatServer{chatServerName: strconv.Itoa(r.Int())}
 	return s
 }
-
-
