@@ -12,6 +12,14 @@ import (
 	"time"
 )
 
+const (
+	port = ":50051"
+)
+
+type chatServer struct {
+	chatServerName string
+}
+
 func main() {
 	runtime.GOMAXPROCS(10)
 	f, err := os.Create("trace.out")
@@ -64,36 +72,4 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChatRequest) {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-
-	// Do something with chat server!
-	// REMOVE THIS FROM HERE INTO LIBRARY
-	/*waitc := make(chan struct{})
-	go func(tx *pb.ChatRequest) {
-		for {
-			req, err := h.RecvReq() // THIS IS NIL! ... NEED TO INITIALISE SOME SORT OF SERVER
-			if err != nil {
-				log.Fatalf("%v", err)
-			}
-			if req.TxID != tx.TxID {
-				log.Fatalf("error: bad req, txid mismatch")
-			}
-			if req.Input == "CHAINCODE DONE" {
-				p.ReleaseConnection(h.ConnectionWrapper.Id)
-				err = h.Done(tx.TxID)
-				if err != nil {
-					log.Fatalf("%v", err)
-				}
-				close(waitc)
-				return
-			}
-			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)
-			resp := &pb.ChatResponse{Message: reqMessage, TxID: req.TxID}
-
-			err = h.SendResp(resp)
-			if err != nil {
-				log.Fatalf("%v", err)
-			}
-		}
-	}(txReq)
-	<-waitc*/
 }

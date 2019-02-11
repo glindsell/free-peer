@@ -256,12 +256,6 @@ func newChatServer() *chatServer {
 	return s
 }
 
-/*func NewCCHandler (servStream pb.ChatService_ChatServer) *CCHandler {
-	h := &CCHandler{}
-	h.serverStream = servStream
-	return h
-}*/
-
 type chatServer struct {
 	chatServerName string
 }
