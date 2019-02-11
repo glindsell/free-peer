@@ -120,7 +120,7 @@ func (h *CCHandler) Start() {
 		go func(req *pb.ChatRequest) {
 			h.chatServiceClient = pb.NewChatServiceClient(clientConnection)
 			ctx := context.Background()
-			h.clientStream, err = h.chatServiceClient.Chat(ctx) // This was nil
+			h.clientStream, err = h.chatServiceClient.Chat(ctx)
 			if err != nil {
 				log.Fatalf("error creating client stream: %v", err)
 			}

@@ -49,7 +49,6 @@ type ConnectionHandler struct {
 	ConnectionWrapper *ConnectionWrapper
 	clientStream      pb.ChatService_ChatClient // allows gRPC stream
 	serverStream      pb.ChatService_ChatServer // allows gRPC stream
-	cancelContext     context.CancelFunc
 }
 
 func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
@@ -61,6 +60,7 @@ func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFun
 		if err != nil {
 			return err
 		}
+		go p.runConnection(c)
 		//go p.runConnection(c)
 		time.Sleep(1000 * time.Millisecond)
 	}
@@ -70,7 +70,7 @@ func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFun
 
 func (p *ConnectionPoolWrapper) GetConnection(k int) *ConnectionWrapper {
 	c := p.LiveConnMap[k]
-	c.Requests++
+	//c.Requests++
 	return c
 }
 
@@ -187,6 +187,7 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 			}
 			h.cancelContext()
 		}*/
+		return true, nil
 	}
 	return false, nil
 
@@ -224,8 +225,7 @@ func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, erro
 	clientConn := c.ClientConn.(*grpc.ClientConn)
 	client := pb.NewChatServiceClient(clientConn)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	ch.cancelContext = cancel
+	ctx := context.Background()
 
 	ch.clientStream, err = client.Chat(ctx)
 	if err != nil {
@@ -261,12 +261,10 @@ type chatServer struct {
 }
 
 func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
-	//h := NewCCHandler(servStream)
-	//h.Start()
 	waitc := make(chan struct{})
 	go func() {
 		for {
-			req, err := servStream.Recv() // THIS IS NIL! ... NEED TO INITIALISE SOME SORT OF SERVER
+			req, err := servStream.Recv()
 			log.Printf("Req received on chat server: %v", req)
 			if err != nil {
 				log.Fatalf("%v", err)
@@ -275,14 +273,13 @@ func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
 				log.Fatalf("error: bad req, txid mismatch")
 			}*/
 			if req.Input == "CHAINCODE DONE" {
-				/*p.ReleaseConnection(h.ConnectionWrapper.Id)
-				err = h.Done(tx.TxID)
-				if err != nil {
-					log.Fatalf("%v", err)
-				}
+				//p.ReleaseConnection(h.ConnectionWrapper.Id)
+				//err = h.Done(tx.TxID)
+				//if err != nil {
+				//	log.Fatalf("%v", err)
+				//}
 				close(waitc)
-				return*/
-				log.Printf("Received CHAINCODE DONE on: %v", req)
+				return
 			}
 			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)
 			resp := &pb.ChatResponse{Message: reqMessage, TxID: req.TxID}
@@ -305,6 +302,7 @@ func (h *ConnectionHandler) SendReq(request *pb.ChatRequest) error {
 		return errors.New(fmt.Sprintf("failed to send request: %v", err))
 	}
 	log.Printf(" | SEND >>> %v on connection: %v", request.Input, h.ConnectionWrapper.Id)
+	h.ConnectionWrapper.Requests--
 	return nil
 }
 

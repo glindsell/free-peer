@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-const (
-	port = ":50051"
-)
-
 type chatServer struct {
 	chatServerName string
 }
@@ -35,7 +31,7 @@ func main() {
 	defer trace.Stop()
 
 	// Create a pool of connections using the initPool function
-	p, err := lib.InitGrpcPool(3, 3000)
+	p, err := lib.InitGrpcPool(3, 5000)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}

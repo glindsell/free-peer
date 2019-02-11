@@ -19,7 +19,7 @@ rm -r protobuf
 # gRPC. After gRPC's beta release, the Dockerfile versions will be updated to
 # build a specific version.
 
-EXPOSE 50051
+EXPOSE 50051 50052
 
 COPY ./ /go/src/github.com/chainforce/free-peer/multi-request
 
@@ -30,4 +30,4 @@ RUN go get github.com/golang/protobuf/protoc-gen-go
 # Install vim
 RUN apt-get -y install vim
 
-CMD go run /go/src/github.com/chainforce/free-peer/multi-request/chaincode_server/main.go
+CMD tail -f /dev/null
