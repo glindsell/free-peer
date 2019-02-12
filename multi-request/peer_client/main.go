@@ -17,6 +17,7 @@ type chatServer struct {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	runtime.GOMAXPROCS(10)
 	f, err := os.Create("trace.out")
 	if err != nil {
@@ -31,7 +32,7 @@ func main() {
 	defer trace.Stop()
 
 	// Create a pool of connections using the initPool function
-	p, err := lib.InitGrpcPool(3, 5000)
+	p, err := lib.InitGrpcPool(3, 3000)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -54,6 +55,7 @@ func main() {
 }
 
 func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChatRequest) {
+	log.Printf("1")
 	if !txReq.IsTX {
 		log.Fatalf("error: SendTx on a peer connection handler should be a TX")
 	}

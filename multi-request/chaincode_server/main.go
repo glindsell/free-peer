@@ -23,6 +23,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -104,7 +105,7 @@ func (h *CCHandler) SendResp(msg *pb.ChatResponse) error {
 	return nil
 }
 
-func (h *CCHandler) Start() {
+func (h *CCHandler) Start() error {
 	grpcCon, err := initGrpcConnection()
 	if err != nil {
 		log.Fatalf("error starting grpc connection: %v", err)
@@ -112,6 +113,10 @@ func (h *CCHandler) Start() {
 	clientConnection := grpcCon.(*grpc.ClientConn)
 	for {
 		msgFromPeer, err := h.RecvReq()
+		if err == io.EOF {
+			log.Printf("EOF received")
+			return nil
+		}
 		if err != nil {
 			log.Fatalf("error receiving from stream: %v", err)
 		}
@@ -127,13 +132,11 @@ func (h *CCHandler) Start() {
 			log.Println("Chat started")
 
 			for i := 0; i < 3; i++ {
-				log.Printf("i: %v", i)
 				reqFromCC := &pb.ChatRequest{Input: fmt.Sprintf("CC PutState: %v", i), IsTX: false, TxID: msgFromPeer.TxID}
 				err := h.SendReq(reqFromCC)
 				if err != nil {
 					log.Fatalf("error sending on stream: %v", err)
 				}
-				log.Printf("1")
 				log.Printf("Request sent: %v", reqFromCC)
 				peerResp, err := h.RecvResp()
 				log.Printf("Response received: %v", peerResp)
@@ -154,6 +157,7 @@ func (h *CCHandler) Start() {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

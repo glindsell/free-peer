@@ -17,6 +17,7 @@ import (
 
 type InitClientConnFunction func() (interface{}, error)
 type CloseClientConnFunction func(interface{}) error
+//var ongoingTxs map[int32]*ConnectionHandler
 
 const (
 	address = "127.0.0.1:50051"
@@ -52,6 +53,7 @@ type ConnectionHandler struct {
 }
 
 func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
+	//ongoingTxs = make(map[int32]*ConnectionHandler)
 	p.LiveConnMap = make(map[int]*ConnectionWrapper)
 	p.DeadConnMap = make(map[int]*ConnectionWrapper)
 	for i := 0; i < size; i++ {
@@ -98,6 +100,14 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	if err != nil {
 		log.Fatalf("error killing connection: %v", err)
 	}
+	// Create new connection
+	newC := p.newConnection(c.TimeToLive, c.InitFn, c.CloseFn)
+	err = p.initConnection(newC)
+	if err != nil {
+		log.Printf("error starting connection: %v", err)
+	}
+	// Run new connection
+	p.runConnection(newC)
 }
 
 func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
@@ -124,6 +134,8 @@ func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
 func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
 	p.Lock()
 	defer p.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	p.ConnNum++
 	c.Id = p.ConnNum
 	log.Printf("Starting connection: %v", strconv.Itoa(c.Id))
@@ -157,20 +169,18 @@ func (p *ConnectionPoolWrapper) resetConnection(c *ConnectionWrapper) error {
 		}
 	}
 
-	// Create new connection
-	newC := p.newConnection(c.TimeToLive, c.InitFn, c.CloseFn)
-	err = p.initConnection(newC)
-	if err != nil {
-		return errors.New(fmt.Sprintf("error starting connection: %v", err))
-	}
-	// Run new connection
-	go p.runConnection(newC)
 
 	return nil
 }
 
 func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, error) {
 	if c.Requests == 0 {
+		for _, h := range c.Handlers {
+			err := h.closeSend()
+			if err != nil {
+				return false, err
+			}
+		}
 		delete(p.LiveConnMap, c.Id)
 		err := c.CloseFn(c.ClientConn)
 		if err != nil {
@@ -180,13 +190,12 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 		p.DeadConnMap[c.Id] = c
 		log.Printf("Killed connection: %v", strconv.Itoa(c.Id))
 
-		/*for _, h := range c.Handlers {
-			err = h.CloseSend()
+		for _, h := range c.Handlers {
+			err = h.closeSend()
 			if err != nil {
 				return false, err
 			}
-			h.cancelContext()
-		}*/
+		}
 		return true, nil
 	}
 	return false, nil
@@ -202,8 +211,11 @@ func (p *ConnectionPoolWrapper) getAllConnections() []int {
 }
 
 func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
+	log.Printf("2")
 	p.Lock()
+	log.Printf("3")
 	defer p.Unlock()
+	log.Printf("4")
 
 	var err error
 	var ch ConnectionHandler
@@ -274,11 +286,13 @@ func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
 			}*/
 			if req.Input == "CHAINCODE DONE" {
 				//p.ReleaseConnection(h.ConnectionWrapper.Id)
-				//err = h.Done(tx.TxID)
-				//if err != nil {
-				//	log.Fatalf("%v", err)
-				//}
+				/*h := ongoingTxs[req.TxID]
+				err = h.Done()
+				if err != nil {
+					log.Fatalf("%v", err)
+				}*/
 				close(waitc)
+				//h.ConnectionWrapper.Requests--
 				return
 			}
 			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)
@@ -301,6 +315,7 @@ func (h *ConnectionHandler) SendReq(request *pb.ChatRequest) error {
 	if err := h.clientStream.Send(request); err != nil {
 		return errors.New(fmt.Sprintf("failed to send request: %v", err))
 	}
+	//ongoingTxs[request.TxID] = h
 	log.Printf(" | SEND >>> %v on connection: %v", request.Input, h.ConnectionWrapper.Id)
 	h.ConnectionWrapper.Requests--
 	return nil
@@ -351,7 +366,7 @@ func (h *ConnectionHandler) closeSend() error {
 	return nil
 }
 
-func (h *ConnectionHandler) Done(txID int32) error {
+func (h *ConnectionHandler) Done() error {
 	err := h.closeSend()
 	if err != nil {
 		return err

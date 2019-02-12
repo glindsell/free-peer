@@ -46,6 +46,7 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
+			log.Printf("EOF received")
 			return nil
 		}
 		if err != nil {
