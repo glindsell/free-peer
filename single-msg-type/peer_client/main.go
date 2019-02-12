@@ -39,9 +39,9 @@ func main() {
 	// creates new go routine
 	// registers go routine with map of txid to go channel
 	var i int32
-	for j := 0; j < 1000; j++ {
+	for j := 0; j < 100; j++ {
 		input := fmt.Sprintf("PEER REQUEST - TX: %v START - message", i)
-		SendTx(p, &pb.ChaincodeMessage{Message: input, IsTX: true, TxID: i})
+		go SendTx(p, &pb.ChaincodeMessage{Message: input, IsTX: true, TxID: i})
 		//r := rand.Intn(1000)
 		//time.Sleep(time.Duration(r) * time.Millisecond)
 		i++
