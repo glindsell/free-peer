@@ -95,8 +95,8 @@ func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
 	// Wait for Time to Live
 	time.Sleep(time.Duration(c.TimeToLive) * time.Millisecond)
 
-	// Reset connection
-	err := p.resetConnection(c)
+	// Kill connection
+	err := p.killConnection(c)
 	if err != nil {
 		log.Fatalf("error killing connection: %v", err)
 	}
@@ -149,21 +149,21 @@ func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
 	return nil
 }
 
-func (p *ConnectionPoolWrapper) resetConnection(c *ConnectionWrapper) error {
+func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) error {
 	p.Lock()
 	defer p.Unlock()
 	c.Lock()
 	defer c.Unlock()
 	// Kill connection
 	log.Printf("Killing connection: %v", strconv.Itoa(c.Id))
-	killed, err := p.killConnection(c)
+	killed, err := p.tryKillConnection(c)
 	if err != nil {
 		return errors.New(fmt.Sprintf("error killing connection: %v", err))
 	}
 	for killed != true {
 		log.Printf("failed to kill connection, connection in use, retrying later")
 		time.Sleep(1 * time.Second)
-		killed, err = p.killConnection(c)
+		killed, err = p.tryKillConnection(c)
 		if err != nil {
 			return errors.New(fmt.Sprintf("error killing connection: %v", err))
 		}
@@ -173,15 +173,15 @@ func (p *ConnectionPoolWrapper) resetConnection(c *ConnectionWrapper) error {
 	return nil
 }
 
-func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, error) {
+func (p *ConnectionPoolWrapper) tryKillConnection(c *ConnectionWrapper) (bool, error) {
 	if c.Requests == 0 {
+		delete(p.LiveConnMap, c.Id)
 		for _, h := range c.Handlers {
 			err := h.closeSend()
 			if err != nil {
 				return false, err
 			}
 		}
-		delete(p.LiveConnMap, c.Id)
 		err := c.CloseFn(c.ClientConn)
 		if err != nil {
 			return false, err
@@ -190,12 +190,6 @@ func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, erro
 		p.DeadConnMap[c.Id] = c
 		log.Printf("Killed connection: %v", strconv.Itoa(c.Id))
 
-		for _, h := range c.Handlers {
-			err = h.closeSend()
-			if err != nil {
-				return false, err
-			}
-		}
 		return true, nil
 	}
 	return false, nil
@@ -211,11 +205,8 @@ func (p *ConnectionPoolWrapper) getAllConnections() []int {
 }
 
 func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
-	log.Printf("2")
 	p.Lock()
-	log.Printf("3")
 	defer p.Unlock()
-	log.Printf("4")
 
 	var err error
 	var ch ConnectionHandler
