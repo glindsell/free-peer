@@ -40,7 +40,7 @@ func main() {
 	go lib.Serve()
 
 	var i int32
-	for {
+	for j := 0; j < 1000; j++ {
 		log.Println("Go")
 		input := fmt.Sprintf("PEER REQUEST - TX: %v START - message", i)
 		SendTx(p, &pb.ChatRequest{Input: input, IsTX: true, TxID: i})
@@ -49,9 +49,9 @@ func main() {
 		i++
 	}
 
-	// prevent main from exiting immediately
-	//var input string
-	//fmt.Scanln(&input)
+	// prevent main from exiting
+	var input string
+	fmt.Scanln(&input)
 }
 
 func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChatRequest) {

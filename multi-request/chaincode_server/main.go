@@ -130,6 +130,23 @@ func (h *CCHandler) Start() error {
 				log.Fatalf("error creating client stream: %v", err)
 			}
 			log.Println("Chat started")
+			go func() {
+				for {
+					peerResp, err := h.RecvResp()
+					if err == io.EOF {
+						// read done.
+						//close(waitc)
+						return
+					}
+					if err != nil {
+						log.Fatalf("error sending on stream: %v", err)
+					}
+					log.Printf("Response received: %v", peerResp)
+					if peerResp.TxID != req.TxID {
+						log.Fatalf("error request txID mismatch")
+					}
+				}
+			}()
 
 			for i := 0; i < 3; i++ {
 				reqFromCC := &pb.ChatRequest{Input: fmt.Sprintf("CC PutState: %v", i), IsTX: false, TxID: msgFromPeer.TxID}
@@ -138,12 +155,6 @@ func (h *CCHandler) Start() error {
 					log.Fatalf("error sending on stream: %v", err)
 				}
 				log.Printf("Request sent: %v", reqFromCC)
-				peerResp, err := h.RecvResp()
-				log.Printf("Response received: %v", peerResp)
-
-				if peerResp.TxID != req.TxID {
-					log.Fatalf("error request txID mismatch")
-				}
 			}
 
 			doneFromCC := &pb.ChatRequest{Input: "CHAINCODE DONE", TxID: msgFromPeer.TxID}
