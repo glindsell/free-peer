@@ -276,14 +276,14 @@ func (c *chatServer) Chat(servStream pb.ChatService_ChatServer) error {
 				log.Fatalf("error: bad req, txid mismatch")
 			}*/
 			if req.Input == "CHAINCODE DONE" {
-				//p.ReleaseConnection(h.ConnectionWrapper.Id)
+				//p.ReleaseConnection(h.Connection.Id)
 				/*h := ongoingTxs[req.TxID]
 				err = h.Done()
 				if err != nil {
 					log.Fatalf("%v", err)
 				}*/
 				close(waitc)
-				//h.ConnectionWrapper.Requests--
+				//h.Connection.Requests--
 				return
 			}
 			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", req.Input)

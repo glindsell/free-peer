@@ -27,7 +27,8 @@ import (
 "math/rand"
 "net"
 "strconv"
-"time"
+	"sync"
+	"time"
 
 pb "github.com/chainforce/free-peer/single-msg-type/chaincode_proto"
 "google.golang.org/grpc"
@@ -42,9 +43,33 @@ type server struct {
 	chaincodeName string
 }
 
+type chaincodeHandler struct {
+	sync.Mutex
+	ongoingTxs map[int32]chan *pb.ChaincodeMessage
+	stream pb.Chaincode_ChaincodeChatServer
+}
+
+func newChaincodeHandler(stream pb.Chaincode_ChaincodeChatServer) *chaincodeHandler {
+	ongTx := make(map[int32]chan *pb.ChaincodeMessage)
+	handler := &chaincodeHandler{
+		ongoingTxs: ongTx,
+		stream: stream,
+	}
+	return handler
+}
+
 func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
+	h := newChaincodeHandler(stream)
+	err := h.Start()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *chaincodeHandler) Start() error {
 	for {
-		req, err := stream.Recv()
+		reqFromPeer, err := h.stream.Recv()
 		if err == io.EOF {
 			log.Printf("EOF received")
 			return nil
@@ -52,27 +77,38 @@ func (s *server) ChaincodeChat(stream pb.Chaincode_ChaincodeChatServer) error {
 		if err != nil {
 			return err
 		}
-		log.Printf(" | RECV <<< Req: %v\n", req)
-		if req.IsTX {
-			go func(request *pb.ChaincodeMessage) {
+		log.Printf(" | RECV <<< Req: %v\n", reqFromPeer)
+		if reqFromPeer.IsTX {
+			if _, ok := h.ongoingTxs[reqFromPeer.TxID]; ok {
+				log.Fatal("error: duplication TX received by chaincode!")
+			}
+			ch := make(chan *pb.ChaincodeMessage)
+			h.ongoingTxs[reqFromPeer.TxID] = make(chan *pb.ChaincodeMessage)
+			go func(requestIn *pb.ChaincodeMessage, ch chan *pb.ChaincodeMessage) {
 				for i := 0; i < 3; i++ {
-					respMessage := fmt.Sprintf("CHAINCODE REQUEST - PUT STATE %v - for tx: %v", i, req.TxID)
-					resp := &pb.ChaincodeMessage{TxID: req.TxID, Message: respMessage}
-					err := stream.Send(resp)
+					message := fmt.Sprintf("CHAINCODE REQUEST %v for tx: %v", i, requestIn.TxID)
+					reqFromCC := &pb.ChaincodeMessage{TxID: requestIn.TxID, Message: message}
+					err := h.stream.Send(reqFromCC)
 					if err != nil {
 						log.Fatalf(fmt.Sprintf("error: %v", err))
 					}
-					log.Printf(" | SEND >>> Req: %v\n", resp)
+					log.Printf(" | SEND >>> Req: %v\n", reqFromCC)
+					resp := <-ch
+					if resp.TxID != requestIn.TxID {
+						log.Fatal("error: request ID mismatch in chaincode")
+					}
 				}
 
-				respDone := &pb.ChaincodeMessage{TxID: req.TxID, Message: "CHAINCODE DONE"}
-				err = stream.Send(respDone)
+				respDone := &pb.ChaincodeMessage{TxID: reqFromPeer.TxID, Message: "CHAINCODE DONE"}
+				err = h.stream.Send(respDone)
 				if err != nil {
 					log.Fatalf(fmt.Sprintf("error: %v", err))
 				}
-			}(req)
+			}(reqFromPeer, ch)
 		} else {
-			log.Printf("Req is ongoing tx: %v", req.Message)
+			ch := h.ongoingTxs[reqFromPeer.TxID]
+			ch <- reqFromPeer
+			log.Printf("Req is ongoing tx: %v", reqFromPeer.Message)
 		}
 	}
 }

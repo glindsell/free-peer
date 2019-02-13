@@ -118,13 +118,13 @@ func (_m *MockRouteGuide_RouteChatClient) EXPECT() *_MockRouteGuide_RouteChatCli
 }
 
 func (_m *MockRouteGuide_RouteChatClient) CloseSend() error {
-	ret := _m.ctrl.Call(_m, "CloseSend")
+	ret := _m.ctrl.Call(_m, "closeSend")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 func (_mr *_MockRouteGuide_RouteChatClientRecorder) CloseSend() *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "CloseSend")
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "closeSend")
 }
 
 func (_m *MockRouteGuide_RouteChatClient) Context() context.Context {

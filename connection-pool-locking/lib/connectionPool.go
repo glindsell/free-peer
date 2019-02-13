@@ -229,11 +229,11 @@ func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, erro
 func (ch *ConnectionHandler) SendReq(request *pb.ChaincodeRequest) error {
 	ch.Mutex.Lock()
 	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
+	//ch.Connection.Mutex.Lock()
+	//defer ch.Connection.Mutex.Unlock()
 	log.Printf(" | SEND >>> %v on connection: %v", request.Input, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
+	//ch.Connection.Requests++
+	//log.Printf("c.Request increased to: %v", ch.Connection.Requests)
 	chatClient := *ch.chatClient
 	if err := chatClient.Send(request); err != nil {
 		return errors.New(fmt.Sprintf("failed to send request: %v", err))
@@ -244,27 +244,27 @@ func (ch *ConnectionHandler) SendReq(request *pb.ChaincodeRequest) error {
 func (ch *ConnectionHandler) RecvResp() (*pb.ChaincodeResponse, error) {
 	ch.Mutex.Lock()
 	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
+	//ch.Connection.Mutex.Lock()
+	//defer ch.Connection.Mutex.Unlock()
 	chatClient := *ch.chatClient
 	in, err := chatClient.Recv()
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
 	}
-	//ch.ConnectionWrapper.Requests--
+	//ch.Connection.Requests--
 	log.Printf(" | REVC <<< %v on connection: %v", in.Message, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
+	//log.Printf("c.Request reduced to: %v", ch.Connection.Requests)
 	return in, nil
 }
 
 func (ch *ConnectionHandler) SendResp(response *pb.ChaincodeResponse) error {
 	ch.Mutex.Lock()
 	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
+	//ch.Connection.Mutex.Lock()
+	//defer ch.Connection.Mutex.Unlock()
 	log.Printf(" | SEND >>> %v on connection: %v", response.Message, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
+	//ch.Connection.Requests++
+	//log.Printf("c.Request increased to: %v", ch.Connection.Requests)
 	chatServer := *ch.chatServer
 	if err := chatServer.Send(response); err != nil {
 		return errors.New(fmt.Sprintf("failed to send request: %v", err))
@@ -275,30 +275,30 @@ func (ch *ConnectionHandler) SendResp(response *pb.ChaincodeResponse) error {
 func (ch *ConnectionHandler) RecvReq() (*pb.ChaincodeRequest, error) {
 	ch.Mutex.Lock()
 	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
+	//ch.Connection.Mutex.Lock()
+	//defer ch.Connection.Mutex.Unlock()
 	chatServer := *ch.chatServer
 	in, err := chatServer.Recv()
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
 	}
-	//ch.ConnectionWrapper.Requests--
+	//ch.Connection.Requests--
 	log.Printf(" | RECV <<< %v on connection: %v", in.Input, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
+	//log.Printf("c.Request reduced to: %v", ch.Connection.Requests)
 	return in, nil
 }
 
 func (ch *ConnectionHandler) CloseSend() error {
 	ch.Mutex.Lock()
 	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
+	//ch.Connection.Mutex.Lock()
+	//defer ch.Connection.Mutex.Unlock()
 	chatClient := *ch.chatClient
 	err := chatClient.CloseSend()
 	if err != nil {
 		return errors.New(fmt.Sprintf("failed to send close on stream: %v", err))
 	}
-	//ch.ConnectionWrapper.Requests--
+	//ch.Connection.Requests--
 	return nil
 }
 

@@ -5,9 +5,11 @@ import (
 	pb "github.com/chainforce/free-peer/single-msg-type/chaincode_proto"
 	"github.com/chainforce/free-peer/single-msg-type/lib"
 	"log"
+	"math/rand"
 	"os"
 	"runtime"
 	"runtime/trace"
+	"time"
 )
 
 func main() {
@@ -39,11 +41,11 @@ func main() {
 	// creates new go routine
 	// registers go routine with map of txid to go channel
 	var i int32
-	for j := 0; j < 100; j++ {
+	for j := 0; j < 1000; j++ {
 		input := fmt.Sprintf("PEER REQUEST - TX: %v START - message", i)
 		go SendTx(p, &pb.ChaincodeMessage{Message: input, IsTX: true, TxID: i})
-		//r := rand.Intn(1000)
-		//time.Sleep(time.Duration(r) * time.Millisecond)
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Millisecond)
 		i++
 	}
 	// prevent main from exiting immediately
@@ -51,7 +53,7 @@ func main() {
 	fmt.Scanln(&input)
 }
 
-func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeMessage) {
+func SendTx(p *lib.ConnectionPool, txReq *pb.ChaincodeMessage) {
 	if !txReq.IsTX {
 		log.Fatalf("error: SendTx on a peer connection handler should be a TX")
 	}
@@ -60,39 +62,10 @@ func SendTx(p *lib.ConnectionPoolWrapper, txReq *pb.ChaincodeMessage) {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	log.Printf("Got connection: %v", h.ConnectionWrapper.Id)
+	log.Printf("Got connection: %v", h.Connection.Id)
 
-	waitc := make(chan struct{})
-	err = h.SendReq(txReq)
+	err = h.SendTx(txReq)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	go func(tx *pb.ChaincodeMessage) {
-		for {
-			resp, err := h.RecvResp()
-			if err != nil {
-				log.Fatalf("%v", err)
-			}
-			if resp.TxID != tx.TxID {
-				log.Fatalf("error: bad req, txid mismatch")
-			}
-			if resp.Message == "CHAINCODE DONE" {
-				p.ReleaseConnection(h.ConnectionWrapper.Id)
-				err = h.CloseSend()
-				if err != nil {
-					log.Fatalf("%v", err)
-				}
-				close(waitc)
-				return
-			}
-			reqMessage := fmt.Sprintf("PEER RESPONSE OK to: %v", resp.Message)
-			req := &pb.ChaincodeMessage{Message: reqMessage, IsTX: false, TxID: resp.TxID}
-
-			err = h.SendReq(req)
-			if err != nil {
-				log.Fatalf("%v", err)
-			}
-		}
-	}(txReq)
-	<- waitc
 }

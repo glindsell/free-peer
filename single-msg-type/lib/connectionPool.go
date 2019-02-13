@@ -8,7 +8,6 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -20,45 +19,25 @@ const (
 	address = "127.0.0.1:50051"
 )
 
-type ConnectionPoolWrapper struct {
+type ConnectionPool struct {
+	sync.Mutex
 	Size        int
-	LiveConnMap map[int]*ConnectionWrapper
-	DeadConnMap map[int]*ConnectionWrapper
+	LiveConnMap map[int]*Connection
+	DeadConnMap map[int]*Connection
 	ConnNum     int
 	Select		int
-	Mutex       sync.Mutex
 }
 
-type ConnectionWrapper struct {
-	Id         int
-	ClientConn interface{}
-	InitFn     InitClientConnFunction
-	CloseFn    CloseClientConnFunction
-	TimeToLive int
-	Requests   int
-	Dead       bool
-	Handlers   []*ConnectionHandler
-	Mutex      sync.Mutex
-}
-
-type ConnectionHandler struct {
-	ConnectionWrapper *ConnectionWrapper
-	chatClient        *pb.Chaincode_ChaincodeChatClient // allows gRPC stream
-	chatServer        *pb.Chaincode_ChaincodeChatServer // allows gRPC stream
-	cancelContext     context.CancelFunc
-	OngoingTxs        map[int32]chan *pb.ChaincodeMessage
-	Mutex             sync.Mutex
-}
-
-func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
-	p.LiveConnMap = make(map[int]*ConnectionWrapper)
-	p.DeadConnMap = make(map[int]*ConnectionWrapper)
+func (p *ConnectionPool) InitPool(size, ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) error {
+	p.LiveConnMap = make(map[int]*Connection)
+	p.DeadConnMap = make(map[int]*Connection)
 	for i := 0; i < size; i++ {
-		c := p.newConnection(ttL, initFn, closeFn)
-		err := p.initConnection(c)
+		c := newConnection(p.ConnNum, ttL, initFn, closeFn)
+		err := c.initConnection()
 		if err != nil {
 			return err
 		}
+		p.addConnection(c)
 		go p.runConnection(c)
 		time.Sleep(1000 * time.Millisecond)
 	}
@@ -66,50 +45,49 @@ func (p *ConnectionPoolWrapper) InitPool(size, ttL int, initFn InitClientConnFun
 	return nil
 }
 
-func (p *ConnectionPoolWrapper) GetConnection(k int) *ConnectionWrapper {
-	c := p.LiveConnMap[k]
-	c.Requests++
-	return c
-}
 
-func (p *ConnectionPoolWrapper) ReleaseConnection(k int) {
-	c := p.LiveConnMap[k]
-	c.Requests--
-}
-
-func (p *ConnectionPoolWrapper) newConnection(ttL int, initFn InitClientConnFunction, closeFn CloseClientConnFunction) *ConnectionWrapper {
-	c := &ConnectionWrapper{}
-	c.InitFn = initFn
-	c.CloseFn = closeFn
-	c.TimeToLive = ttL
-	return c
-}
-
-func (p *ConnectionPoolWrapper) runConnection(c *ConnectionWrapper) {
+func (p *ConnectionPool) runConnection(c *Connection) {
 	p.PrintConnectionMaps()
 
 	// Wait for Time to Live
 	time.Sleep(time.Duration(c.TimeToLive) * time.Millisecond)
 
-	// Reset connection
-	killed, err := p.killConnection(c)
-	if err != nil {
-		log.Fatalf("error killing connection: %v", err)
-	}
-	for killed != true {
-		log.Printf("error killing connection, connection in use, retrying later")
-		time.Sleep(1 * time.Second)
-		killed, err = p.killConnection(c)
+	// Kill connection
+	c.Lock()
+	if c.Requests == 0 {
+		c.Unlock()
+		err := c.killConnection()
 		if err != nil {
 			log.Fatalf("error killing connection: %v", err)
 		}
+	} else {
+		c.Unlock()
+		p.runConnection(c)
 	}
-
+	p.removeConnection(c)
+	// Create new connection
+	newC := newConnection(p.ConnNum, c.TimeToLive, c.InitFn, c.CloseFn)
+	err := newC.initConnection()
+	if err != nil {
+		log.Printf("error starting connection: %v", err)
+	}
+	// Add connection
+	p.addConnection(newC)
+	// Run connection
+	p.runConnection(newC)
 }
 
-func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
+func (p *ConnectionPool) addConnection(c *Connection) {
+	p.Lock()
+	defer p.Unlock()
+	p.LiveConnMap[c.Id] = c
+	p.ConnNum++
+	return
+}
+
+func (p *ConnectionPool) PrintConnectionMaps() {
+	p.Lock()
+	defer p.Unlock()
 	log.Printf("Live connections:")
 	var live []int
 	for k := range p.LiveConnMap {
@@ -128,204 +106,62 @@ func (p *ConnectionPoolWrapper) PrintConnectionMaps() {
 	return
 }
 
-func (p *ConnectionPoolWrapper) initConnection(c *ConnectionWrapper) error {
-	/*p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()*/
-	p.ConnNum++
-	c.Id = p.ConnNum
-	log.Printf("Starting connection: %v", strconv.Itoa(c.Id))
-	clientConn, err := c.InitFn()
-	if err != nil {
-		return err
-	}
-	c.ClientConn = clientConn
-	p.LiveConnMap[c.Id] = c
-	log.Printf("Started connection: %v", strconv.Itoa(c.Id))
-	return nil
+func (p *ConnectionPool) removeConnection(c *Connection) {
+	log.Printf("1")
+	p.Lock()
+	log.Printf("2")
+	defer p.Unlock()
+	delete(p.LiveConnMap, c.Id)
+	p.DeadConnMap[c.Id] = c
+	return
 }
 
-func (p *ConnectionPoolWrapper) killConnection(c *ConnectionWrapper) (bool, error) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	c.Mutex.Lock()
-	defer c.Mutex.Unlock()
-	log.Printf("Killing connection: %v", strconv.Itoa(c.Id))
-	if c.Requests == 0 {
-		delete(p.LiveConnMap, c.Id)
-		err := c.CloseFn(c.ClientConn)
-		if err != nil {
-			return false, err
-		}
-		c.Dead = true
-		p.DeadConnMap[c.Id] = c
-		log.Printf("Killed connection: %v", strconv.Itoa(c.Id))
 
-		for _, h := range c.Handlers {
-			h.cancelContext()
-		}
-		newC := &ConnectionWrapper{
-			InitFn:     c.InitFn,
-			CloseFn:    c.CloseFn,
-			TimeToLive: c.TimeToLive,
-		}
-		err = p.initConnection(newC)
-		if err != nil {
-			log.Fatalf("error starting connection: %v", err)
-		}
-
-		go p.runConnection(newC)
-		return true, nil
-	}
-	return false, nil
-}
-
-func (p *ConnectionPoolWrapper) GetAllConnections() []int {
+func (p *ConnectionPool) GetConnection() (*Connection, error) {
 	var ks []int
 	for k := range p.LiveConnMap {
 		ks = append(ks, k)
 	}
-	return ks
-}
-
-func (p *ConnectionPoolWrapper) GetConnectionHandler() (*ConnectionHandler, error) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	var ch ConnectionHandler
-
-	ks := p.GetAllConnections()
 	sort.Ints(ks)
+	log.Printf("ks: %v", ks)
+	log.Printf("p.Select: %v", p.Select)
+	log.Printf("p.ConnNum: %v", p.ConnNum)
 
 	k := ks[p.Select]
 	p.Select++
 
-	if k == p.ConnNum {
+	if k == (p.ConnNum - 1) {
 		p.Select = 0
 	}
 
-	c := p.GetConnection(k)
+	c := p.LiveConnMap[k]
+	return c, nil
+}
 
-	ch.ConnectionWrapper = c
+func (p *ConnectionPool) GetConnectionHandler() (*ConnectionHandler, error) {
+	p.Lock()
+	defer p.Unlock()
+	var h ConnectionHandler
+
+	c, err := p.GetConnection()
+	if err != nil {
+		return nil, err
+	}
+
+	h.Connection = c
 
 	clientConn := c.ClientConn.(*grpc.ClientConn)
 	client := pb.NewChaincodeClient(clientConn)
-	ctx, cancel := context.WithCancel(context.Background())
-	ch.cancelContext = cancel
-
-	//ctx := context.Background()
+	ctx := context.Background()
 	stream, err := client.ChaincodeChat(ctx)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("chaincode chat failed on connection %v: %v", c.Id, err))
 	}
 
-	ch.chatClient = &stream
+	h.chatClient = &stream
+	c.Handlers = append(c.Handlers, &h)
 
-	c.Handlers = append(c.Handlers, &ch)
-
-	return &ch, nil
+	return &h, nil
 }
 
-func (ch *ConnectionHandler) SendReq(request *pb.ChaincodeMessage) error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	log.Printf(" | SEND >>> %v on connection: %v", request.Message, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
-	chatClient := *ch.chatClient
-	if err := chatClient.Send(request); err != nil {
-		return errors.New(fmt.Sprintf("failed to send request: %v", err))
-	}
-	return nil
-}
 
-func (ch *ConnectionHandler) RecvResp() (*pb.ChaincodeMessage, error) {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatClient := *ch.chatClient
-	in, err := chatClient.Recv()
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
-	}
-	//ch.ConnectionWrapper.Requests--
-	log.Printf(" | REVC <<< %v on connection: %v", in.Message, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
-	return in, nil
-}
-
-func (ch *ConnectionHandler) SendResp(response *pb.ChaincodeMessage) error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	log.Printf(" | SEND >>> %v on connection: %v", response.Message, ch.ConnectionWrapper.Id)
-	//ch.ConnectionWrapper.Requests++
-	//log.Printf("c.Request increased to: %v", ch.ConnectionWrapper.Requests)
-	chatServer := *ch.chatServer
-	if err := chatServer.Send(response); err != nil {
-		return errors.New(fmt.Sprintf("failed to send request: %v", err))
-	}
-	return nil
-}
-
-func (ch *ConnectionHandler) RecvReq() (*pb.ChaincodeMessage, error) {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatServer := *ch.chatServer
-	in, err := chatServer.Recv()
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to receive request: %v", err))
-	}
-	//ch.ConnectionWrapper.Requests--
-	log.Printf(" | RECV <<< %v on connection: %v", in.Message, ch.ConnectionWrapper.Id)
-	//log.Printf("c.Request reduced to: %v", ch.ConnectionWrapper.Requests)
-	return in, nil
-}
-
-func (ch *ConnectionHandler) CloseSend() error {
-	ch.Mutex.Lock()
-	defer ch.Mutex.Unlock()
-	//ch.ConnectionWrapper.Mutex.Lock()
-	//defer ch.ConnectionWrapper.Mutex.Unlock()
-	chatClient := *ch.chatClient
-	err := chatClient.CloseSend()
-	if err != nil {
-		return errors.New(fmt.Sprintf("failed to send close on stream: %v", err))
-	}
-	//ch.ConnectionWrapper.Requests--
-	return nil
-}
-
-func initGrpcConnection() (interface{}, error) {
-	// Create connection
-	grpcConn, err := grpc.Dial(address, grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	return grpcConn, nil
-}
-
-func closeGrpcConnection(grpcConn interface{}) error {
-	// Create connection
-	conn := grpcConn.(*grpc.ClientConn)
-	err := conn.Close()
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	return nil
-}
-
-func InitGrpcPool(size, ttL int) (*ConnectionPoolWrapper, error) {
-	var p = &ConnectionPoolWrapper{}
-	err := p.InitPool(size, ttL, initGrpcConnection, closeGrpcConnection)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
-}
