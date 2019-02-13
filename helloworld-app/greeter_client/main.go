@@ -20,16 +20,16 @@ package main
 
 import (
 	"context"
+	"google.golang.org/grpc"
+	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 	"log"
 	"os"
 	"time"
-
-	"google.golang.org/grpc"
-	pb "google.golang.org/grpc/examples/helloworld/helloworld"
 )
 
-const (
-	address     = "<IP-ADDR>:50051"
+var (
+	//port 		= os.Getenv("SERVER_PORT")
+	address     = os.Getenv("SERVERSVC_HOST")
 	defaultName = "world"
 )
 
@@ -47,11 +47,14 @@ func main() {
 	if len(os.Args) > 1 {
 		name = os.Args[1]
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	r, err := c.SayHello(ctx, &pb.HelloRequest{Name: name})
-	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+	for i := 0; i < 10000; i++ {
+		r, err := c.SayHello(ctx, &pb.HelloRequest{Name: name})
+		if err != nil {
+			log.Fatalf("could not greet: %v", err)
+		}
+		log.Printf("Greeting: %s", r.Message)
+		time.Sleep(100 * time.Millisecond)
 	}
-	log.Printf("Greeting: %s", r.Message)
 }

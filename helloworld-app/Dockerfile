@@ -30,4 +30,4 @@ RUN go get github.com/golang/protobuf/protoc-gen-go
 # Install vim
 RUN apt-get -y install vim
 
-CMD go run /go/src/helloworld-app/greeter_server/main.go
+CMD go run /go/src/helloworld-app/greeter_client/main.go
