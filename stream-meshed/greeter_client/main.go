@@ -19,16 +19,16 @@
 package main
 
 import (
-	"context"
-	"google.golang.org/grpc"
+	"fmt"
 	pb "github.com/chainforce/free-peer/stream-meshed/helloworld"
+	"google.golang.org/grpc"
 	"log"
 	"os"
+	"context"
 	"time"
 )
 
 var (
-	//port 		= os.Getenv("SERVER_PORT")
 	address     = os.Getenv("SERVERSVC_HOST")
 )
 
@@ -38,27 +38,34 @@ func main() {
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	//defer conn.Close()
 	c := pb.NewGreeterClient(conn)
 
+	//ctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
 	ctx := context.Background()
 
-	for i := 0; i < 10000; i++ {
+	for {
+		for i := 0; i < 10; i++ {
 
-		r, err := c.SayHello(ctx)
-		if err != nil {
-			log.Fatalf("could not greet: %v", err)
+			go func() {
+				r, err := c.SayHello(ctx)
+				if err != nil {
+					log.Fatalf("could not greet: %v", err)
+				}
+				err = r.Send(&pb.HelloMessage{Message: "Message from Peer"})
+				if err != nil {
+					log.Fatal(err)
+				}
+				in, err := r.Recv()
+				if err != nil {
+					log.Fatal(err)
+				}
+				log.Printf("Peer received: %s", in.Message)
+			}()
 		}
-		err = r.Send(&pb.HelloMessage{Message: "Message from Peer"})
-		if err != nil {
-			log.Fatal(err)
-		}
-		in, err := r.Recv()
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Peer received: %s", in.Message)
-
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
+	var input string
+	fmt.Scanln(&input)
 }

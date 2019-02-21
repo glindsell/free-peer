@@ -22,6 +22,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -33,7 +34,7 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-const (
+var (
 	port = ":50051"
 )
 
@@ -46,8 +47,12 @@ type server struct{
 func (s *server) SayHello(stream pb.Greeter_SayHelloServer) error {
 	for {
 		in, err := stream.Recv()
+		if err == io.EOF {
+			log.Printf("EOF received on stream")
+			continue
+		}
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal(fmt.Sprintf("error receiving on stream: %v", err))
 		}
 		log.Printf("Chaincode received: %v", in.Message)
 		message := &pb.HelloMessage{Message: fmt.Sprintf("Repsonse from Chaincode: %v", s.Name)}

@@ -30,4 +30,4 @@ RUN go get github.com/golang/protobuf/protoc-gen-go
 # Install vim
 RUN apt-get -y install vim
 
-CMD go run /go/src/github.com/chainforce/free-peer/stream-meshed/greeter_client/main.go
+CMD tail -f /dev/null
