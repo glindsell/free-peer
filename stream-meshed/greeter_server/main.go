@@ -55,7 +55,7 @@ func (s *server) SayHello(stream pb.Greeter_SayHelloServer) error {
 			log.Fatal(fmt.Sprintf("error receiving on stream: %v", err))
 		}
 		log.Printf("Chaincode received: %v", in.Message)
-		message := &pb.HelloMessage{Message: fmt.Sprintf("Repsonse from Chaincode: %v", s.Name)}
+		message := &pb.HelloMessage{Message: fmt.Sprintf("Repsonse to request: %v | from Chaincode: %v", in.Message, s.Name)}
 		err = stream.Send(message)
 		if err != nil {
 			log.Fatal(err)

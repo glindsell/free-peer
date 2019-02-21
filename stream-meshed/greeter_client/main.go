@@ -23,8 +23,10 @@ import (
 	pb "github.com/chainforce/free-peer/stream-meshed/helloworld"
 	"google.golang.org/grpc"
 	"log"
+	"math/rand"
 	"os"
 	"context"
+	"strconv"
 	"time"
 )
 
@@ -45,6 +47,9 @@ func main() {
 	//defer cancel()
 	ctx := context.Background()
 
+	name := rand.New(rand.NewSource(time.Now().UnixNano()))
+	nameInt := name.Int()
+
 	for {
 		for i := 0; i < 10; i++ {
 
@@ -53,7 +58,7 @@ func main() {
 				if err != nil {
 					log.Fatalf("could not greet: %v", err)
 				}
-				err = r.Send(&pb.HelloMessage{Message: "Message from Peer"})
+				err = r.Send(&pb.HelloMessage{Message: fmt.Sprintf("Message from Peer: %v", strconv.Itoa(nameInt))})
 				if err != nil {
 					log.Fatal(err)
 				}

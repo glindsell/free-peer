@@ -1,0 +1,37 @@
+---
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  name: client
+  namespace: helloworld
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: client-svc
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: client-svc
+    spec:
+      containers:
+      - env:
+        - name: SERVER_PORT
+          value: "50051"
+        - name: SERVERSVC_HOST
+          value: server-svc.helloworld:50051
+        - name: INDEX_BUNDLE
+          value: dist/index_bundle.js
+        image: glindsell/stream-meshed-client:latest
+        name: client-svc
+        ports:
+        - containerPort: 50051
+          name: grpc
+        resources:
+          requests:
+            cpu: 100m
+status: {}
+---
