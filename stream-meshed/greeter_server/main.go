@@ -22,20 +22,18 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"math/rand"
-	"net"
-	"strconv"
-	"time"
-
 	pb "github.com/chainforce/free-peer/stream-meshed/helloworld"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"io"
+	"log"
+	"net"
+	"os"
 )
 
 var (
 	port = ":50051"
+	podName = os.Getenv("POD_NAME")
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -80,8 +78,7 @@ func main() {
 }
 
 func newServer() *server {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	s := &server{Name: strconv.Itoa(r.Int())}
+	s := &server{Name: podName}
 	return s
 }
 

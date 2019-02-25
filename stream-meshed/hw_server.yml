@@ -24,6 +24,10 @@ spec:
     spec:
       containers:
       - env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: GRPC_PORT
           value: "50051"
         image: glindsell/stream-meshed-server:latest

@@ -19,6 +19,10 @@ spec:
     spec:
       containers:
       - env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: SERVER_PORT
           value: "50051"
         - name: SERVERSVC_HOST
