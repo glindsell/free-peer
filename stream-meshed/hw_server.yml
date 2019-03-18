@@ -39,18 +39,23 @@ spec:
           requests:
             cpu: 100m
 ---
-status: {}
-apiVersion: v1
 kind: Service
+apiVersion: v1
 metadata:
   name: server-svc
   namespace: helloworld
 spec:
   selector:
-    app: server-svc
-  clusterIP: None
+    app: server
   ports:
-  - name: grpc
+  - protocol: TCP
     port: 50051
     targetPort: 50051
+  clusterIP: 10.96.0.99
+  loadBalancerIP: 78.11.24.19
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 146.148.47.155
 ---
