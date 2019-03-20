@@ -11,7 +11,7 @@ metadata:
   name: client
   namespace: helloworld
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: client-svc
@@ -43,19 +43,4 @@ spec:
           requests:
             cpu: 100m
 status: {}
----
-status: {}
-apiVersion: v1
-kind: Service
-metadata:
-  name: client-svc
-  namespace: helloworld
-spec:
-  selector:
-    app: client-svc
-  clusterIP: None
-  ports:
-  - name: grpc
-    port: 50051
-    targetPort: 50051
 ---
