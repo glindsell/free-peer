@@ -83,9 +83,11 @@ linkerd tap pod/nginx-ingress-controller-69699fdffd-n2x4f -n ingress-nginx
 ```vim greeter_client/main.go```
 And change port in line 13 to match node port for nginx-ingress
 change:  
-```address = "localhost:<NODEPORT>"```
+```address = "ingress.local:<NODEPORT>"```
 
-19. Run gRPC client:
+19. Add: `127.0.0.1 ingress.local` to your /etc/hosts
+
+20. Run gRPC client:
 ```
 go run greeter_client/main.go
 ```
