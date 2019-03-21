@@ -1,80 +1,94 @@
 # Helloworld-app
 ## Description  
-This app demonstrates a GRPC server and client communicating in a single node k8s cluster, with load balancing applied between three pods using Linkerd.
+This app demonstrates a GRPC server and client communicating in a multi node k8s cluster, with load balancing applied between three pods using Linkerd.
 
 ## Run the app
-Follow the instructions to install minikube:  
-https://kubernetes.io/docs/tasks/tools/install-minikube/
+1. Bring up cluster:  
+```vagrant up```
 
-Start minikube:  
-```minikube start```
+2. Ssh into k8s-head:  
+```vagrant global-status```
 
-Set docker env:  
-```eval $(minikube docker-env)```
+3. Build docker image:  
+```vagrant ssh <vagrant-machine-id>```
 
-Build docker image:  
-```docker build -t helloworld-app .```
-
-Run local image as client in minikube:  
-```kubectl run helloworld-app-client --image=helloworld-app:latest --port=50051 --image-pull-policy=Never```
-
-Check that it's running:  
-```kubectl get pods```
-
-Install Linkerd:  
+4. Install Linkerd:  
 ```curl -sL https://run.linkerd.io/install | sh```
 
-Add linkerd to your path:  
+5. Add linkerd to your path:  
 ```export PATH=$PATH:$HOME/.linkerd2/bin```
+(You must do this in each new vagrant ssh instance - or add the line to .bashrc in the vm)
 
-Verify the CLI is installed and running correctly:  
+6. Verify the CLI is installed and running correctly:  
 ```linkerd version```
 
-To check that your cluster is configured correctly and ready to install the control plane, you can run:  
+7. To check that your cluster is configured correctly and ready to install the control plane, you can run:  
 ```linkerd check --pre```
 
-Install the lightweight control plane into its own namespace (linkerd):  
+8. Install the lightweight control plane into its own namespace (linkerd):  
 ```linkerd install | kubectl apply -f -```
 
-Validate that everything’s happening correctly:  
+9. Validate that everything’s happening correctly:  
 (This command will patiently wait until Linkerd has been installed and is running.)  
 ```linkerd check```
 
-In a new terminal view the Linkerd dashboard by running:  
+10. In a new terminal ssh into k8s-head and view the Linkerd dashboard by running:  
 ```linkerd dashboard```
+(You will need to forward the port shown on the vm to access the dashboard from the host - this can be done without restarting the vm by opening the virtualbox gui Settings -> Network -> Port Fordwarding)
 
-Back in terminal view deployments:  
-```kubectl -n linkerd get deploy```
+11. Inject the ingress yaml files:  
+```
+cd ingress
+linkerd inject nginx-ingress.yaml | kubectl apply -f -
+linkerd inject nginx-ingress-svc.yaml | kubectl apply -f -
+```
 
-Install the app as a new deployment (using docker hub image at glindsell/helloworld-app):  
-```linkerd inject hello-world-grpc.yml | kubectl apply -f -```
+12. Clone the project and checkout the correct branch:  
+```
+cd
+mkdir -p go/src/github.com/chainforce/free-peer
+cd go/src/github.com/chainforce/free-peer/
+git clone https://github.com/glindsell/free-peer.git
+cd free-peer/
+git fetch --all
+git checkout ingress
+```
 
-View new deployment in the Linkerd dashboard.  
+13. Inject the gRPC servers:  
+```
+cd stream-meshed/
+linkerd inject hw_server.yml | kubectl apply -f -
+```
 
-Expose the deployment as a service:  
-```kubectl expose deployment helloworld-app-server --type=NodePort```
+14. Inject Ingress:  
+```
+cd ~/ingress/
+linkerd inject ingress.yml | kubectl apply -f -
+```
 
-Get IP Address of services:  
-```kubectl get services```
+15. View node port for nginx-ingress:  
+```
+kubectl get svc nginx-ingress -o wide -n ingress-nginx
+```
 
-Exec into client:  
-```kubectl exec -it helloworld-app-client-<id-goes-here> -- /bin/bash```
+16. Run linkerd tap to view messages hitting the ingress
+```
+linkerd tap pod/nginx-ingress-controller-69699fdffd-n2x4f -n ingress-nginx
+```
+(id of ingress controller will vary between deployments)
 
-cd into app dir:  
-```cd src/helloworld-app/```
+17. Repeat step 12 on the host.  
 
-Change <IP-ADDR> to CLUSTER-IP of helloworld-app-server (line 32 of helloworld-app/greeter_client):  
-```vim greeter_client/main.go```  
+18. Edit gRPC client:  
+```vim greeter_client/main.go```
+And change port in line 13 to match node port for nginx-ingress
 change:  
-```address = "<IP-ADDR>:50051"```
+```address = "localhost:<NODEPORT>"```
 
-Run the client to send requests:  
-```bash request.sh```
-
-View load balancing occuring accross all three helloworld-app-server pods.  
-
-Click on Grafana icon to view individual pod’s stats.  
+19. Run gRPC client:
+```
+go run greeter_client/main.go
+```
 
 To bring everything down:  
-```minikube stop```  
-```minikube delete```
+```vagrant destroy -f```  

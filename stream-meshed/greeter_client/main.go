@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	address = "ingress.local:32145"
+	address = "localhost:31912"
 	podName = "client-1"
 )
 
