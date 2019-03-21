@@ -20,16 +20,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	//defer conn.Close()
-	c := pb.NewGreeterClient(conn)
 
-	//ctx, cancel := context.WithCancel(context.Background())
-	//defer cancel()
+	c := pb.NewGreeterClient(conn)
 	ctx := context.Background()
 
 	for {
 		for i := 0; i < 10; i++ {
-
 			go func() {
 				r, err := c.SayHello(ctx)
 				if err != nil {
