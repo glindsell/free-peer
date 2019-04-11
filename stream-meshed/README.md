@@ -1,4 +1,8 @@
 # Helloworld-app
+
+## WIP - This code is in experimental phase and is currently set up to highlight the issue raised here: https://github.com/linkerd/linkerd2/issues/2120 and therefore *WILL NOT RUN SUCCESSFULLY*
+
+
 ## Description  
 This app demonstrates a GRPC server and client communicating in a multi node k8s cluster, with load balancing applied between three pods using Linkerd.
 
