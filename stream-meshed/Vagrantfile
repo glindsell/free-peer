@@ -116,7 +116,8 @@ Vagrant.configure("2") do |config|
     servers.each do |opts|
         config.vm.define opts[:name] do |config|
 
-            config.vm.synced_folder "ingress/", "/home/vagrant/ingress"
+            config.vm.synced_folder "./", "/home/vagrant/go/src/github.com/chainforce/stream-meshed"
+            config.vm.synced_folder "../../../kubernetes/ingress-nginx/", "/home/vagrant/go/src/github.com/kubernetes/ingress-nginx/"
             config.vm.box = opts[:box]
             config.vm.box_version = opts[:box_version]
             config.vm.hostname = opts[:name]
