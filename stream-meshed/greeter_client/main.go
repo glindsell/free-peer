@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	addr    = "ingress.local:31822"
+	addr    = "192.168.99.253:32622"
 	podName = "client-1"
 	crt     = "/Users/george/ssl/certstrap/out/ingress.local.crt"
 	//key     = "/Users/george/ssl/certstrap/out/127.0.0.1.key"
